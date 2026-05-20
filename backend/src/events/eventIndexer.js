@@ -54,9 +54,6 @@ async function handleDAOCreated(daoAddress, treasuryAddress, name, tokenAddress,
     logger.info(`📦 DAO indexed: "${name}" at ${daoAddress} with Treasury ${treasuryAddress}`);
 
     emitGlobal('dao:created', dao.toObject());
-
-    await startGovernanceListener(daoAddress.toLowerCase());
-    await startTreasuryListener(treasuryAddress.toLowerCase(), daoAddress.toLowerCase());
   } catch (error) {
     logger.error('Error handling DAOCreated event:', error);
   }
@@ -239,80 +236,35 @@ async function handleTransactionExecuted(treasuryAddress, daoAddress, txId) {
   }
 }
 
-/**
- * Starts listening to a single Governance contract's events.
- */
-async function startGovernanceListener(daoAddress) {
-  if (activeListeners.has(daoAddress)) return;
-
-  const governanceContract = getGovernanceContract(daoAddress);
-  if (!governanceContract) {
-    logger.warn(`Cannot create listener for DAO ${daoAddress} — contract unavailable`);
-    return;
-  }
-
-  governanceContract.on('ProposalCreated', (id, proposer, description, snapshotBlock, endTime, target, value, event) => {
-    handleProposalCreated(daoAddress, id, proposer, description, snapshotBlock, endTime, target, value, event);
-  });
-
-  governanceContract.on('VoteCast', (proposalId, voter, optionIndex, weight, event) => {
-    handleVoteCast(daoAddress, proposalId, voter, optionIndex, weight, event);
-  });
-
-  governanceContract.on('ProposalQueued', (proposalId, timelockTxId, event) => {
-    handleProposalQueued(daoAddress, proposalId, timelockTxId);
-  });
-
-  governanceContract.on('ProposalExecuted', (proposalId, event) => {
-    handleProposalExecuted(daoAddress, proposalId);
-  });
-
-  activeListeners.set(daoAddress, governanceContract);
-  logger.info(`👂 Listening to Governance events on ${daoAddress}`);
-}
+let indexerInterval = null;
+let isPolling = false;
 
 /**
- * Starts listening to a single Treasury contract's events.
+ * Polls the blockchain for new events.
+ * Uses queryFilter which is extremely stable and survives Hardhat restarts.
  */
-async function startTreasuryListener(treasuryAddress, daoAddress) {
-  if (activeListeners.has(treasuryAddress)) return;
+async function pollBlockchain() {
+  if (isPolling) return;
+  isPolling = true;
 
-  const treasuryContract = getTreasuryContract(treasuryAddress);
-  if (!treasuryContract) {
-    logger.warn(`Cannot create listener for Treasury ${treasuryAddress} — contract unavailable`);
-    return;
-  }
+  try {
+    const provider = getProvider();
+    if (!provider) return;
 
-  treasuryContract.on('TransactionExecuted', (txId, target, value, event) => {
-    handleTransactionExecuted(treasuryAddress, daoAddress, txId);
-  });
+    const currentBlock = await provider.getBlockNumber();
+    const daoFactory = getDAOFactoryContract();
 
-  activeListeners.set(treasuryAddress, treasuryContract);
-  logger.info(`👂 Listening to Treasury events on ${treasuryAddress}`);
-}
-
-/**
- * Main entry point — starts all event listeners and syncs history.
- */
-async function startEventIndexer() {
-  const provider = getProvider();
-  if (!provider) {
-    logger.warn('⚠️  Blockchain provider not available — event indexer disabled.');
-    return;
-  }
-
-  const currentBlock = await provider.getBlockNumber();
-  logger.info(`🔍 Syncing blockchain events up to block ${currentBlock}...`);
-
-  const daoFactory = getDAOFactoryContract();
-  if (daoFactory) {
-    // 1. Sync historical DAOCreated events
-    try {
+    // 1. Sync Factory
+    if (daoFactory) {
       const factorySync = await SyncState.findOne({ contractId: 'DAOFactory' });
-      const startBlock = factorySync ? factorySync.lastSyncedBlock + 1 : 0;
-      
+      // On brand new node / reset, start from 0
+      let startBlock = factorySync ? factorySync.lastSyncedBlock + 1 : 0;
+      if (startBlock > currentBlock) {
+        // If node reset and currentBlock is lower than last synced, reset sync state
+        startBlock = 0;
+      }
+
       if (startBlock <= currentBlock) {
-        logger.info(`Factory sync: querying events from block ${startBlock} to ${currentBlock}`);
         const events = await daoFactory.queryFilter('DAOCreated', startBlock, currentBlock);
         for (const event of events) {
           const [daoAddress, treasuryAddress, name, tokenAddress, proposalThreshold, timelockDelay, quorumPercentage, creator] = event.args;
@@ -324,99 +276,111 @@ async function startEventIndexer() {
           { upsert: true }
         );
       }
-    } catch (err) {
-      logger.error('Error syncing historical DAOCreated events:', err);
     }
 
-    // Live listener
-    daoFactory.on('DAOCreated', (daoAddress, treasuryAddress, name, tokenAddress, proposalThreshold, timelockDelay, quorumPercentage, creator, event) => {
-      handleDAOCreated(daoAddress, treasuryAddress, name, tokenAddress, proposalThreshold, timelockDelay, quorumPercentage, creator, event);
-      SyncState.findOneAndUpdate({ contractId: 'DAOFactory' }, { lastSyncedBlock: event.log.blockNumber }, { upsert: true }).catch(err => {
-        logger.error('Failed to update factory sync state:', err);
-      });
-    });
-    logger.info(`👂 Listening to DAOFactory at ${await daoFactory.getAddress()}`);
-  } else {
-    logger.warn('DAOFactory contract not configured — skipping factory listener.');
-  }
+    // 2. Sync existing DAOs
+    const existingDAOs = await DAO.find({}).lean();
+    for (const dao of existingDAOs) {
+      const daoAddress = dao.contractAddress;
+      const syncKey = `DAO:${daoAddress}`;
+      const daoSync = await SyncState.findOne({ contractId: syncKey });
+      
+      let startBlock = daoSync ? daoSync.lastSyncedBlock + 1 : dao.blockNumber || 0;
+      if (startBlock > currentBlock) {
+        startBlock = dao.blockNumber || 0;
+      }
 
-  // 2. Sync historical Governance events for all DAOs
-  const existingDAOs = await DAO.find({}).lean();
-  for (const dao of existingDAOs) {
-    const daoAddress = dao.contractAddress;
-    const syncKey = `DAO:${daoAddress}`;
-    const daoSync = await SyncState.findOne({ contractId: syncKey });
-    const startBlock = daoSync ? daoSync.lastSyncedBlock + 1 : dao.blockNumber || 0;
+      if (startBlock <= currentBlock) {
+        try {
+          const govContract = getGovernanceContract(daoAddress);
+          if (!govContract) continue;
 
-    if (startBlock <= currentBlock) {
-      try {
-        const govContract = getGovernanceContract(daoAddress);
-        logger.info(`Syncing DAO ${dao.name} (${daoAddress}) events from block ${startBlock} to ${currentBlock}`);
-        
-        // ProposalCreated
-        const pEvents = await govContract.queryFilter('ProposalCreated', startBlock, currentBlock);
-        for (const ev of pEvents) {
-          const [id, proposer, description, snapshotBlock, endTime, target, value] = ev.args;
-          await handleProposalCreated(daoAddress, id, proposer, description, snapshotBlock, endTime, target, value, ev);
+          // ProposalCreated
+          const pEvents = await govContract.queryFilter('ProposalCreated', startBlock, currentBlock);
+          for (const ev of pEvents) {
+            const [id, proposer, description, snapshotBlock, endTime, target, value] = ev.args;
+            await handleProposalCreated(daoAddress, id, proposer, description, snapshotBlock, endTime, target, value, ev);
+          }
+
+          // VoteCast
+          const vEvents = await govContract.queryFilter('VoteCast', startBlock, currentBlock);
+          for (const ev of vEvents) {
+            const [proposalId, voter, optionIndex, weight] = ev.args;
+            await handleVoteCast(daoAddress, proposalId, voter, optionIndex, weight, ev);
+          }
+
+          // ProposalQueued
+          const qEvents = await govContract.queryFilter('ProposalQueued', startBlock, currentBlock);
+          for (const ev of qEvents) {
+            const [proposalId, timelockTxId] = ev.args;
+            await handleProposalQueued(daoAddress, proposalId, timelockTxId);
+          }
+
+          // ProposalExecuted
+          const eEvents = await govContract.queryFilter('ProposalExecuted', startBlock, currentBlock);
+          for (const ev of eEvents) {
+            const [proposalId] = ev.args;
+            await handleProposalExecuted(daoAddress, proposalId);
+          }
+
+          // Treasury TransactionExecuted
+          if (dao.treasuryAddress) {
+            const treasuryContract = getTreasuryContract(dao.treasuryAddress);
+            if (treasuryContract) {
+              const tEvents = await treasuryContract.queryFilter('TransactionExecuted', startBlock, currentBlock);
+              for (const ev of tEvents) {
+                const [txId] = ev.args;
+                await handleTransactionExecuted(dao.treasuryAddress, daoAddress, txId);
+              }
+            }
+          }
+
+          await SyncState.findOneAndUpdate(
+            { contractId: syncKey },
+            { lastSyncedBlock: currentBlock },
+            { upsert: true }
+          );
+        } catch (err) {
+          logger.error(`Error polling events for DAO ${daoAddress}:`, err.message);
         }
-
-        // VoteCast
-        const vEvents = await govContract.queryFilter('VoteCast', startBlock, currentBlock);
-        for (const ev of vEvents) {
-          const [proposalId, voter, optionIndex, weight] = ev.args;
-          await handleVoteCast(daoAddress, proposalId, voter, optionIndex, weight, ev);
-        }
-
-        // ProposalQueued
-        const qEvents = await govContract.queryFilter('ProposalQueued', startBlock, currentBlock);
-        for (const ev of qEvents) {
-          const [proposalId, timelockTxId] = ev.args;
-          await handleProposalQueued(daoAddress, proposalId, timelockTxId);
-        }
-
-        // ProposalExecuted
-        const eEvents = await govContract.queryFilter('ProposalExecuted', startBlock, currentBlock);
-        for (const ev of eEvents) {
-          const [proposalId] = ev.args;
-          await handleProposalExecuted(daoAddress, proposalId);
-        }
-
-        await SyncState.findOneAndUpdate(
-          { contractId: syncKey },
-          { lastSyncedBlock: currentBlock },
-          { upsert: true }
-        );
-      } catch (err) {
-        logger.error(`Error syncing events for DAO ${daoAddress}:`, err);
       }
     }
-
-    // Start live listeners
-    await startGovernanceListener(daoAddress);
-    if (dao.treasuryAddress) {
-      await startTreasuryListener(dao.treasuryAddress, daoAddress);
-    }
+  } catch (err) {
+    logger.error('Error in block polling loop:', err);
+  } finally {
+    isPolling = false;
   }
-
-  logger.info(`🚀 Event indexer started. Tracking ${existingDAOs.length} existing DAO(s).`);
 }
 
 /**
- * Stops all event listeners.
+ * Main entry point — starts block polling indexer.
+ */
+async function startEventIndexer() {
+  const provider = getProvider();
+  if (!provider) {
+    logger.warn('⚠️  Blockchain provider not available — event indexer disabled.');
+    return;
+  }
+
+  // Perform initial sync
+  await pollBlockchain();
+
+  // Poll for new blocks every 2 seconds
+  indexerInterval = setInterval(pollBlockchain, 2000);
+  logger.info('🚀 Polling event indexer started successfully.');
+}
+
+/**
+ * Stops event indexer polling.
  */
 async function stopEventIndexer() {
-  const daoFactory = getDAOFactoryContract();
-  if (daoFactory) {
-    daoFactory.removeAllListeners();
+  if (indexerInterval) {
+    clearInterval(indexerInterval);
+    indexerInterval = null;
   }
-
-  for (const [address, contract] of activeListeners) {
-    contract.removeAllListeners();
-    logger.debug(`Removed listeners for ${address}`);
-  }
-  activeListeners.clear();
-
   logger.info('Event indexer stopped.');
 }
+
+module.exports = { startEventIndexer, stopEventIndexer };
 
 module.exports = { startEventIndexer, stopEventIndexer };
