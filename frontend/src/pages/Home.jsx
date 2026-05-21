@@ -4,7 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import contracts from "../contracts.json";
 
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+const EXPECTED_CHAIN_ID = import.meta.env.VITE_REQUIRED_CHAIN_ID || "31337";
 
 function Home() {
   const [daos, setDaos] = useState([]);
@@ -12,6 +13,7 @@ function Home() {
   const [showModal, setShowModal] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [platformStats, setPlatformStats] = useState(null);
+  const [errorMessage, setErrorMessage] = useState("");
   const navigate = useNavigate();
 
   // Deploy form state
@@ -25,7 +27,7 @@ function Home() {
     fetchPlatformStats();
 
     // Connect to WebSocket server on Port 5000
-    const socket = io("http://localhost:5000");
+    const socket = io(API_BASE.replace('/api', ''));
     socket.on("dao:created", (newDao) => {
       console.log("Real-time event: DAO Deployed!", newDao);
       fetchDAOs();
@@ -38,11 +40,12 @@ function Home() {
 
   const fetchDAOs = async () => {
     try {
+      setErrorMessage("");
       setLoading(true);
 
       // 1. Try to fetch from fast MongoDB backend REST API first
       try {
-        const response = await fetch("http://localhost:5000/api/daos");
+        const response = await fetch(`${API_BASE}/daos`);
         if (response.ok) {
           const result = await response.json();
           if (result.success && result.data) {
@@ -61,7 +64,8 @@ function Home() {
 
       // 2. On-chain Fallback
       if (!window.ethereum) return;
-      const provider = new BrowserProvider(window.ethereum);
+      const provider = await getProvider();
+      await ensureContractDeployed(provider, contracts.DAOFactory.address, "DAOFactory");
 
       const factory = new Contract(
         contracts.DAOFactory.address,
@@ -82,9 +86,37 @@ function Home() {
 
       setDaos(daoDetails);
     } catch (err) {
+      const message = err?.message || "Failed to fetch DAOs.";
+      setErrorMessage(message);
       console.error("Failed to fetch DAOs:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getProvider = async () => {
+    if (!window.ethereum) {
+      throw new Error("MetaMask is required to use BlockBloom.");
+    }
+
+    const provider = new BrowserProvider(window.ethereum);
+    const network = await provider.getNetwork();
+
+    if (String(network.chainId) !== EXPECTED_CHAIN_ID) {
+      throw new Error(
+        `Please switch MetaMask to the local Hardhat network (chainId ${EXPECTED_CHAIN_ID}). Current chainId: ${network.chainId}.`
+      );
+    }
+
+    return provider;
+  };
+
+  const ensureContractDeployed = async (provider, address, name) => {
+    const code = await provider.getCode(address);
+    if (!code || code === "0x" || code === "0x0") {
+      throw new Error(
+        `${name} contract is not deployed at ${address} on the current network.`
+      );
     }
   };
 
@@ -93,9 +125,12 @@ function Home() {
       alert("Please enter a DAO name.");
       return;
     }
+
+    setErrorMessage("");
     setDeploying(true);
     try {
-      const provider = new BrowserProvider(window.ethereum);
+      const provider = await getProvider();
+      await ensureContractDeployed(provider, contracts.DAOFactory.address, "DAOFactory");
       const signer = await provider.getSigner();
 
       const factory = new Contract(
@@ -122,8 +157,10 @@ function Home() {
       await fetchDAOs();
       await fetchPlatformStats();
     } catch (err) {
+      const message = err?.message || "Failed to deploy DAO. Check console for details.";
+      setErrorMessage(message);
       console.error("Deploy failed:", err);
-      alert("Failed to deploy DAO. Check console for details.");
+      alert(message);
     } finally {
       setDeploying(false);
     }
@@ -159,6 +196,12 @@ function Home() {
           + Deploy New DAO
         </button>
       </div>
+
+      {errorMessage && (
+        <div className="mb-6 rounded-2xl bg-red-50 border border-red-200 p-4 text-red-700">
+          {errorMessage}
+        </div>
+      )}
 
       {/* Platform Stats Banner */}
       {platformStats && (

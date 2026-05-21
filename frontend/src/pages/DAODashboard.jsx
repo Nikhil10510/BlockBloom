@@ -4,6 +4,9 @@ import { BrowserProvider, Contract, formatEther } from "ethers";
 import { io } from "socket.io-client";
 import contracts from "../contracts.json";
 
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+const EXPECTED_CHAIN_ID = import.meta.env.VITE_REQUIRED_CHAIN_ID || "31337";
+
 function DAODashboard() {
   const { address } = useParams();
   const [daoName, setDaoName] = useState("");
@@ -13,6 +16,7 @@ function DAODashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [tokenBalance, setTokenBalance] = useState("0");
+  const [errorMessage, setErrorMessage] = useState("");
   const [votingPower, setVotingPower] = useState("0");
 
   // Create proposal form
@@ -37,7 +41,7 @@ function DAODashboard() {
     connectAndLoad();
 
     // Connect to WebSocket server on Port 5000
-    const socket = io("http://localhost:5000");
+    const socket = io(API_BASE.replace('/api', ''));
 
     // Subscribe to this DAO's update channel
     socket.emit("join:dao", address);
@@ -57,43 +61,100 @@ function DAODashboard() {
       }
     });
 
+    // Handle MetaMask account and chain changes dynamically
+    let handleAccountsChanged;
+    let handleChainChanged;
+
+    if (window.ethereum) {
+      handleAccountsChanged = (accounts) => {
+        console.log("MetaMask accounts changed on Dashboard:", accounts);
+        connectAndLoad();
+      };
+      handleChainChanged = (chainId) => {
+        console.log("MetaMask network chain changed on Dashboard:", chainId);
+        window.location.reload();
+      };
+
+      window.ethereum.on("accountsChanged", handleAccountsChanged);
+      window.ethereum.on("chainChanged", handleChainChanged);
+    }
+
     return () => {
       socket.disconnect();
+      if (window.ethereum) {
+        if (handleAccountsChanged) window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
+        if (handleChainChanged) window.ethereum.removeListener("chainChanged", handleChainChanged);
+      }
     };
   }, [address]);
 
+  const getProvider = async () => {
+    if (!window.ethereum) {
+      throw new Error("MetaMask is required to use BlockBloom.");
+    }
+
+    const provider = new BrowserProvider(window.ethereum);
+    const network = await provider.getNetwork();
+    if (String(network.chainId) !== EXPECTED_CHAIN_ID) {
+      throw new Error(
+        `Please switch MetaMask to the local Hardhat network (chainId ${EXPECTED_CHAIN_ID}). Current chainId: ${network.chainId}.`
+      );
+    }
+
+    return provider;
+  };
+
+  const ensureContractDeployed = async (provider, address, name) => {
+    const code = await provider.getCode(address);
+    if (!code || code === "0x" || code === "0x0") {
+      throw new Error(`${name} contract is not deployed at ${address} on the current network.`);
+    }
+  };
+
   const connectAndLoad = async () => {
     try {
-      if (!window.ethereum) return;
-      const provider = new BrowserProvider(window.ethereum);
+      setErrorMessage("");
+      const provider = await getProvider();
       const signer = await provider.getSigner();
-      setAccount(signer.address);
+      const addressString = await signer.getAddress();
+      setAccount(addressString);
       
       // Load user token details
+      await ensureContractDeployed(provider, contracts.BloomToken.address, "BloomToken");
       const token = new Contract(contracts.BloomToken.address, contracts.BloomToken.abi, provider);
-      const bal = await token.balanceOf(signer.address);
-      const votes = await token.getVotes(signer.address);
+      const bal = await token.balanceOf(addressString);
+      const votes = await token.getVotes(addressString);
       setTokenBalance(parseFloat(formatEther(bal)).toLocaleString(undefined, { maximumFractionDigits: 2 }));
       setVotingPower(parseFloat(formatEther(votes)).toLocaleString(undefined, { maximumFractionDigits: 2 }));
 
       await loadDAO(provider);
     } catch (err) {
+      setErrorMessage(err?.message || "Unable to connect to the DAO.");
       console.error(err);
     }
   };
 
   const loadDAO = async (provider) => {
     try {
+      setErrorMessage("");
       setLoading(true);
 
       // Fetch DAO details from blockchain for Name
+      await ensureContractDeployed(provider, address, "Governance");
       const gov = new Contract(address, contracts.Governance.abi, provider);
       const name = await gov.name();
       setDaoName(name);
 
+      const daoBloomToken = await gov.bloomToken();
+      if (daoBloomToken.toLowerCase() !== contracts.BloomToken.address.toLowerCase()) {
+        throw new Error(
+          `This DAO was created with a stale BloomToken address (${daoBloomToken}). Recreate the DAO after deploying the current BloomToken contract at ${contracts.BloomToken.address}.`
+        );
+      }
+
       // 1. Try to fetch proposals from MongoDB fast REST API first
       try {
-        const response = await fetch(`http://localhost:5000/api/proposals?daoAddress=${address}`);
+        const response = await fetch(`${API_BASE}/proposals?daoAddress=${address}`);
         if (response.ok) {
           const result = await response.json();
           if (result.success && result.data) {
@@ -135,6 +196,7 @@ function DAODashboard() {
       }
       setProposals(props);
     } catch (err) {
+      setErrorMessage(err?.message || "Error loading DAO.");
       console.error("Error loading DAO:", err);
     } finally {
       setLoading(false);
@@ -150,11 +212,39 @@ function DAODashboard() {
       alert("At least 2 voting options are required.");
       return;
     }
+    setErrorMessage("");
     setCreating(true);
     try {
-      const provider = new BrowserProvider(window.ethereum);
+      const provider = await getProvider();
+      await ensureContractDeployed(provider, address, "Governance");
       const signer = await provider.getSigner();
       const gov = new Contract(address, contracts.Governance.abi, signer);
+      const daoBloomToken = await gov.bloomToken();
+      if (daoBloomToken.toLowerCase() !== contracts.BloomToken.address.toLowerCase()) {
+        throw new Error(
+          `This DAO was created with a stale BloomToken address (${daoBloomToken}). It cannot create proposals on the current network. Create a new DAO using the updated BloomToken deployment at ${contracts.BloomToken.address}.`
+        );
+      }
+      const token = new Contract(contracts.BloomToken.address, contracts.BloomToken.abi, signer);
+      const userAddress = await signer.getAddress();
+
+      // Ensure the user has voting power; self-delegate if a token balance exists but no votes.
+      let votes = await token.getVotes(userAddress);
+      const balance = await token.balanceOf(userAddress);
+      const threshold = await gov.proposalThreshold();
+
+      if (votes === 0n && balance > 0n) {
+        const delegateTx = await token.delegate(userAddress);
+        await delegateTx.wait();
+        votes = await token.getVotes(userAddress);
+        setVotingPower(parseFloat(formatEther(votes)).toLocaleString(undefined, { maximumFractionDigits: 2 }));
+      }
+
+      if (votes < threshold) {
+        throw new Error(
+          `Your voting power is too low to create a proposal. Current votes: ${votes.toString()}, required: ${threshold.toString()}. Delegate your BLOOM tokens to yourself or acquire more voting power.`
+        );
+      }
 
       const tx = await gov.createProposal(
         proposalDesc.trim(),
@@ -168,10 +258,15 @@ function DAODashboard() {
       setProposalDesc("");
       setProposalDuration("5");
       setProposalOptions(["Yes", "No"]);
-      await loadDAO(new BrowserProvider(window.ethereum));
+      await loadDAO(provider);
     } catch (err) {
+      const message =
+        err?.reason ||
+        err?.message ||
+        "Failed to create proposal. You may not have enough $BLOOM tokens.";
+      setErrorMessage(message);
       console.error("Create proposal failed:", err);
-      alert("Failed to create proposal. You may not have enough $BLOOM tokens.");
+      alert(message);
     } finally {
       setCreating(false);
     }
@@ -180,16 +275,19 @@ function DAODashboard() {
   const castVote = async (proposalId, optionIndex) => {
     setVotingOn(proposalId);
     try {
-      const provider = new BrowserProvider(window.ethereum);
+      setErrorMessage("");
+      const provider = await getProvider();
       const signer = await provider.getSigner();
       const gov = new Contract(address, contracts.Governance.abi, signer);
       const tx = await gov.vote(BigInt(proposalId), BigInt(optionIndex));
       await tx.wait();
       alert("Vote cast successfully! ✅");
-      await loadDAO(new BrowserProvider(window.ethereum));
+      await loadDAO(provider);
     } catch (err) {
+      const message = err?.message || "Vote failed. You may have already voted or lack voting power.";
+      setErrorMessage(message);
       console.error("Vote failed:", err);
-      alert("Vote failed. You may have already voted or lack voting power.");
+      alert(message);
     } finally {
       setVotingOn(null);
     }
@@ -209,10 +307,55 @@ function DAODashboard() {
     return Math.floor(Date.now() / 1000) < endTime;
   };
 
+  const generateMockSummary = (description) => {
+    if (!description || !description.trim()) {
+      return "This governance proposal addresses standard DAO administration and community guidelines. It seeks to gauge member sentiment.";
+    }
+
+    const clean = description.trim().replace(/[?.]+$/, "");
+    const desc = clean.toLowerCase();
+    
+    // Categorize proposal type
+    let type = "governance initiative";
+    let action = "gauge member sentiment and build consensus";
+    
+    if (desc.includes("eth") || desc.includes("usdt") || desc.includes("fund") || desc.includes("transfer") || desc.includes("allocate") || desc.includes("treasury") || desc.includes("spend") || desc.includes("grant")) {
+      type = "financial proposal";
+      action = "authorize the allocation and transfer of treasury resources";
+    } else if (desc.includes("marketing") || desc.includes("community") || desc.includes("campaign") || desc.includes("social") || desc.includes("twitter") || desc.includes("telegram")) {
+      type = "marketing & outreach initiative";
+      action = "align on promotional strategies and growth campaigns";
+    } else if (desc.includes("develop") || desc.includes("code") || desc.includes("smart contract") || desc.includes("bug") || desc.includes("security") || desc.includes("audit") || desc.includes("upgrade")) {
+      type = "technical improvement proposal";
+      action = "approve smart contract upgrades, bug fixes, or system security enhancements";
+    } else if (desc.includes("win") || desc.includes("election") || desc.includes("vote") || desc.includes("poll") || desc.includes("candidate")) {
+      type = "community voting poll";
+      action = "track preferences and record votes on external options";
+    }
+
+    // Build sentence prefix based on description structure
+    let leadSentence = "";
+    const words = clean.split(/\s+/);
+    const firstWord = words[0].toLowerCase();
+    const helperVerbs = ["should", "can", "will", "would", "is", "are", "do", "does", "could", "shall"];
+    
+    if (helperVerbs.includes(firstWord)) {
+      leadSentence = `This ${type} evaluates community sentiment regarding the question: "${clean}?".`;
+    } else if (["allocate", "transfer", "spend", "send", "grant", "deploy", "create", "upgrade", "change", "modify", "setup", "fund", "mint", "burn"].includes(firstWord)) {
+      leadSentence = `This ${type} seeks formal authorization to ${clean.charAt(0).toLowerCase() + clean.slice(1)}.`;
+    } else {
+      leadSentence = `This ${type} addresses the request: "${clean}".`;
+    }
+
+    return `${leadSentence} It aims to ${action} based on the collective decision of the DAO's voting members.`;
+  };
+
   const summarizeProposal = async (proposalId, description) => {
-    if (aiSummaries[proposalId] && aiSummaries[proposalId] !== "Could not generate summary." && !aiSummaries[proposalId].includes("Invalid API key")) return;
+    if (aiSummaries[proposalId] && aiSummaries[proposalId] !== "Could not generate summary.") return;
     
     const activeKey = geminiApiKey || localStorage.getItem("GEMINI_API_KEY");
+    
+    // If no key is provided, prompt for Gemini API key
     if (!activeKey) {
       setPendingSummaryArgs({ proposalId, description });
       setTempKey("");
@@ -248,24 +391,13 @@ function DAODashboard() {
       const data = await res.json();
       const summary =
         data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-        "Could not generate summary.";
+        generateMockSummary(description);
       setAiSummaries((prev) => ({ ...prev, [proposalId]: summary }));
     } catch (err) {
-      console.error("AI summary failed:", err);
-      if (err.message === "Invalid API key") {
-        setAiSummaries((prev) => ({
-          ...prev,
-          [proposalId]: "Invalid API key. Please check your credentials.",
-        }));
-        setPendingSummaryArgs({ proposalId, description });
-        setTempKey(activeKey);
-        setShowKeyModal(true);
-      } else {
-        setAiSummaries((prev) => ({
-          ...prev,
-          [proposalId]: "Failed to generate summary. Please try again.",
-        }));
-      }
+      console.warn("AI summary failed, falling back to local summarizer:", err);
+      // Fail gracefully to the smart mock summarizer
+      const mockSummary = generateMockSummary(description);
+      setAiSummaries((prev) => ({ ...prev, [proposalId]: mockSummary }));
     } finally {
       setSummarizing((prev) => ({ ...prev, [proposalId]: false }));
     }
@@ -284,6 +416,20 @@ function DAODashboard() {
       setTimeout(() => {
         summarizeProposal(proposalId, description);
       }, 100);
+    }
+  };
+
+  const handleSkipWithMock = () => {
+    setShowKeyModal(false);
+    if (pendingSummaryArgs) {
+      const { proposalId, description } = pendingSummaryArgs;
+      setPendingSummaryArgs(null);
+      setSummarizing((prev) => ({ ...prev, [proposalId]: true }));
+      setTimeout(() => {
+        const mockSummary = generateMockSummary(description);
+        setAiSummaries((prev) => ({ ...prev, [proposalId]: mockSummary }));
+        setSummarizing((prev) => ({ ...prev, [proposalId]: false }));
+      }, 300);
     }
   };
 
@@ -328,6 +474,12 @@ function DAODashboard() {
           + New Proposal
         </button>
       </div>
+
+      {errorMessage && (
+        <div className="mb-6 rounded-2xl bg-red-50 border border-red-200 p-4 text-red-700">
+          {errorMessage}
+        </div>
+      )}
 
       {/* Stats Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -694,12 +846,20 @@ function DAODashboard() {
                 </p>
               </div>
 
-              <button
-                onClick={handleSaveApiKey}
-                className="w-full py-3 px-4 rounded-xl text-sm font-semibold bg-purple-600 hover:bg-purple-700 text-white shadow-sm hover:shadow-md transition-all duration-200 mt-2"
-              >
-                💾 Save API Key
-              </button>
+              <div className="flex space-x-3 mt-2">
+                <button
+                  onClick={handleSaveApiKey}
+                  className="flex-1 py-3 px-4 rounded-xl text-sm font-semibold bg-purple-600 hover:bg-purple-700 text-white shadow-sm hover:shadow-md transition-all duration-200"
+                >
+                  💾 Save API Key
+                </button>
+                <button
+                  onClick={handleSkipWithMock}
+                  className="flex-1 py-3 px-4 rounded-xl text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-all duration-200"
+                >
+                  Skip & Mock
+                </button>
+              </div>
             </div>
           </div>
         </div>

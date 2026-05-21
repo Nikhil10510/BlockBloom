@@ -4,7 +4,9 @@
   "main": "index.js",
   "scripts": {
     "test": "hardhat test",
-    "deploy:local": "hardhat ignition deploy ./ignition/modules/DeploySepolia.js --network localhost",
+    "node": "hardhat node",
+    "setup": "hardhat run deploy-local.js --network localhost",
+    "deploy:local": "hardhat run deploy-local.js --network localhost",
     "deploy:sepolia": "hardhat ignition deploy ./ignition/modules/DeploySepolia.js --network sepolia"
   },
   "keywords": [],

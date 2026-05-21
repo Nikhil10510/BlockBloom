@@ -1,16 +1,82 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { BrowserProvider } from "ethers";
+import { io } from "socket.io-client";
 
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
 
 function Leaderboard() {
   const [leaders, setLeaders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
+  const [account, setAccount] = useState(null);
 
   useEffect(() => {
     loadData();
+    checkWallet();
+
+    // Setup Socket.IO for real-time leaderboard updates
+    const socket = io(API_BASE.replace("/api", ""));
+    socket.on("vote:cast", (voteInfo) => {
+      console.log("Real-time event: Vote Cast!", voteInfo);
+      loadData();
+    });
+    socket.on("dao:created", () => {
+      loadData();
+    });
+
+    // Setup MetaMask account change listener
+    let handleAccountsChanged;
+    if (window.ethereum) {
+      handleAccountsChanged = (accounts) => {
+        console.log("MetaMask accounts changed on Leaderboard:", accounts);
+        if (accounts.length > 0) {
+          setAccount(accounts[0]);
+        } else {
+          setAccount(null);
+        }
+        loadData(); // Force refresh leaderboard metrics
+      };
+      window.ethereum.on("accountsChanged", handleAccountsChanged);
+    }
+
+    return () => {
+      socket.disconnect();
+      if (window.ethereum && handleAccountsChanged) {
+        window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
+      }
+    };
   }, []);
+
+  const checkWallet = async () => {
+    if (window.ethereum) {
+      try {
+        const provider = new BrowserProvider(window.ethereum);
+        const accounts = await provider.send("eth_accounts", []);
+        if (accounts.length > 0) {
+          setAccount(accounts[0]);
+        }
+      } catch (err) {
+        console.error("Failed to check wallet:", err);
+      }
+    }
+  };
+
+  const connectWallet = async () => {
+    if (!window.ethereum) {
+      alert("MetaMask is required to connect wallet.");
+      return;
+    }
+    try {
+      const provider = new BrowserProvider(window.ethereum);
+      const accounts = await provider.send("eth_requestAccounts", []);
+      if (accounts.length > 0) {
+        setAccount(accounts[0]);
+      }
+    } catch (err) {
+      console.error("Failed to connect wallet:", err);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -32,6 +98,12 @@ function Leaderboard() {
 
   const medals = ["🥇", "🥈", "🥉"];
 
+  // Find user's rank if connected
+  const userRankIdx = account
+    ? leaders.findIndex((l) => l.voter.toLowerCase() === account.toLowerCase())
+    : -1;
+  const userRecord = userRankIdx !== -1 ? leaders[userRankIdx] : null;
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       {/* Header */}
@@ -43,13 +115,74 @@ function Leaderboard() {
           <span>→</span>
           <span className="text-gray-700 font-medium">Leaderboard</span>
         </div>
-        <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">
-          🏆 Voter Leaderboard
-        </h1>
-        <p className="text-gray-500">
-          Top governance participants across all BlockBloom DAOs.
-        </p>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mb-2">
+              🏆 Voter Leaderboard
+            </h1>
+            <p className="text-gray-500">
+              Top governance participants across all BlockBloom DAOs.
+            </p>
+          </div>
+          
+          {/* Active Wallet Status */}
+          <div className="bg-white border border-gray-200 px-4 py-3 rounded-2xl flex items-center gap-3 shadow-sm self-start md:self-auto">
+            <div className={`w-2.5 h-2.5 rounded-full ${account ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`}></div>
+            {account ? (
+              <div className="text-xs">
+                <p className="font-semibold text-gray-400 uppercase tracking-wider text-[10px]">Active Wallet</p>
+                <p className="font-mono font-bold text-gray-800">{formatAddr(account)}</p>
+              </div>
+            ) : (
+              <button 
+                onClick={connectWallet}
+                className="text-xs font-bold text-indigo-600 hover:text-indigo-700 transition-colors"
+              >
+                Connect Wallet
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* User Personalized Rank Alert */}
+      {account && !loading && (
+        <div className="mb-8">
+          {userRecord ? (
+            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+              <div className="flex items-center gap-4 text-center sm:text-left">
+                <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-xl font-bold shadow-md">
+                  #{userRankIdx + 1}
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900">Your Leaderboard Standing</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    You've cast <span className="font-bold text-indigo-600">{userRecord.totalVotes} votes</span> across <span className="font-bold text-indigo-600">{userRecord.daosParticipated} DAO{userRecord.daosParticipated !== 1 && "s"}</span>.
+                  </p>
+                </div>
+              </div>
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                Active Participator
+              </span>
+            </div>
+          ) : (
+            <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+              <div>
+                <h3 className="text-sm font-bold text-gray-700">Not Ranked Yet</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  You haven't cast any governance votes with this wallet address yet.
+                </p>
+              </div>
+              <Link
+                to="/"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs py-2 px-4 rounded-xl shadow-sm transition-colors"
+              >
+                Browse DAOs & Vote
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Platform Stats Banner */}
       {stats && (
@@ -109,65 +242,79 @@ function Leaderboard() {
           </div>
 
           {/* Rows */}
-          {leaders.map((leader, idx) => (
-            <Link
-              key={leader.voter}
-              to={`/profile/${leader.voter}`}
-              className={`grid grid-cols-12 gap-4 px-6 py-5 items-center border-b border-gray-100 last:border-b-0 hover:bg-indigo-50/40 transition-colors cursor-pointer ${
-                idx < 3 ? "bg-gradient-to-r from-yellow-50/40 to-transparent" : ""
-              }`}
-            >
-              {/* Rank */}
-              <div className="col-span-1 text-center">
-                {idx < 3 ? (
-                  <span className="text-2xl">{medals[idx]}</span>
-                ) : (
-                  <span className="text-sm font-bold text-gray-400">
-                    #{idx + 1}
-                  </span>
-                )}
-              </div>
+          {leaders.map((leader, idx) => {
+            const isCurrentUser = account && leader.voter.toLowerCase() === account.toLowerCase();
+            return (
+              <Link
+                key={leader.voter}
+                to={`/profile/${leader.voter}`}
+                className={`grid grid-cols-12 gap-4 px-6 py-5 items-center border-b border-gray-100 last:border-b-0 hover:bg-indigo-50/40 transition-colors cursor-pointer ${
+                  isCurrentUser
+                    ? "bg-indigo-50/30 font-bold border-l-4 border-l-indigo-600"
+                    : idx < 3
+                    ? "bg-gradient-to-r from-yellow-50/40 to-transparent"
+                    : ""
+                }`}
+              >
+                {/* Rank */}
+                <div className="col-span-1 text-center">
+                  {idx < 3 ? (
+                    <span className="text-2xl">{medals[idx]}</span>
+                  ) : (
+                    <span className="text-sm font-bold text-gray-400">
+                      #{idx + 1}
+                    </span>
+                  )}
+                </div>
 
-              {/* Address */}
-              <div className="col-span-5">
-                <div className="flex items-center space-x-3">
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-sm ${
-                      idx === 0
-                        ? "bg-gradient-to-br from-yellow-400 to-amber-500"
-                        : idx === 1
-                        ? "bg-gradient-to-br from-gray-300 to-gray-400"
-                        : idx === 2
-                        ? "bg-gradient-to-br from-orange-300 to-orange-400"
-                        : "bg-gradient-to-br from-indigo-400 to-purple-500"
-                    }`}
-                  >
-                    {leader.voter.slice(2, 4).toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900 font-mono">
-                      {formatAddr(leader.voter)}
-                    </p>
-                    <p className="text-xs text-gray-400">View profile →</p>
+                {/* Address */}
+                <div className="col-span-5">
+                  <div className="flex items-center space-x-3">
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-sm ${
+                        isCurrentUser
+                          ? "bg-gradient-to-br from-indigo-600 to-indigo-700"
+                          : idx === 0
+                          ? "bg-gradient-to-br from-yellow-400 to-amber-500"
+                          : idx === 1
+                          ? "bg-gradient-to-br from-gray-300 to-gray-400"
+                          : idx === 2
+                          ? "bg-gradient-to-br from-orange-300 to-orange-400"
+                          : "bg-gradient-to-br from-indigo-400 to-purple-500"
+                      }`}
+                    >
+                      {leader.voter.slice(2, 4).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className={`text-sm font-mono ${isCurrentUser ? "text-indigo-600 font-extrabold" : "text-gray-900"}`}>
+                        {formatAddr(leader.voter)}
+                        {isCurrentUser && <span className="text-xs font-bold text-indigo-500 ml-1.5">(You)</span>}
+                      </p>
+                      <p className="text-xs text-gray-400">View profile →</p>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Votes */}
-              <div className="col-span-3 text-center">
-                <span className="text-lg font-bold text-gray-900">
-                  {leader.totalVotes}
-                </span>
-              </div>
+                {/* Votes */}
+                <div className="col-span-3 text-center">
+                  <span className="text-lg font-bold text-gray-900">
+                    {leader.totalVotes}
+                  </span>
+                </div>
 
-              {/* DAOs */}
-              <div className="col-span-3 text-center">
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                  {leader.daosParticipated} DAO{leader.daosParticipated !== 1 && "s"}
-                </span>
-              </div>
-            </Link>
-          ))}
+                {/* DAOs */}
+                <div className="col-span-3 text-center">
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold border ${
+                    isCurrentUser 
+                      ? 'bg-indigo-600 text-white border-indigo-700' 
+                      : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                  }`}>
+                    {leader.daosParticipated} DAO{leader.daosParticipated !== 1 && "s"}
+                  </span>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>
