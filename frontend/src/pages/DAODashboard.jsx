@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { BrowserProvider, Contract, formatEther } from "ethers";
+import { BrowserProvider, Contract, formatEther, parseEther } from "ethers";
 import { io } from "socket.io-client";
 import contracts from "../contracts.json";
 
@@ -23,6 +23,12 @@ function DAODashboard() {
   const [proposalDesc, setProposalDesc] = useState("");
   const [proposalDuration, setProposalDuration] = useState("5");
   const [proposalOptions, setProposalOptions] = useState(["Yes", "No"]);
+  const [isFinancial, setIsFinancial] = useState(false);
+  const [targetAddress, setTargetAddress] = useState("");
+  const [ethAmount, setEthAmount] = useState("");
+
+  const [treasuryBalance, setTreasuryBalance] = useState("0");
+  const [treasuryAddress, setTreasuryAddress] = useState("");
 
   // Vote state
   const [votingOn, setVotingOn] = useState(null);
@@ -60,6 +66,9 @@ function DAODashboard() {
         connectAndLoad();
       }
     });
+
+    socket.on("proposal:executed", () => connectAndLoad());
+    socket.on("proposal:closed", () => connectAndLoad());
 
     // Handle MetaMask account and chain changes dynamically
     let handleAccountsChanged;
@@ -146,6 +155,15 @@ function DAODashboard() {
       setDaoName(name);
 
       const daoBloomToken = await gov.bloomToken();
+
+      try {
+        const tAddr = await gov.treasury();
+        setTreasuryAddress(tAddr);
+        const tBal = await provider.getBalance(tAddr);
+        setTreasuryBalance(parseFloat(formatEther(tBal)).toLocaleString(undefined, { maximumFractionDigits: 4 }));
+      } catch(e) {
+        console.warn("Could not load treasury", e);
+      }
       if (daoBloomToken.toLowerCase() !== contracts.BloomToken.address.toLowerCase()) {
         throw new Error(
           `This DAO was created with a stale BloomToken address (${daoBloomToken}). Recreate the DAO after deploying the current BloomToken contract at ${contracts.BloomToken.address}.`
@@ -246,11 +264,23 @@ function DAODashboard() {
         );
       }
 
-      const tx = await gov.createProposal(
-        proposalDesc.trim(),
-        BigInt(proposalDuration),
-        proposalOptions.filter((o) => o.trim())
-      );
+      let tx;
+      if (isFinancial) {
+        if (!targetAddress || !ethAmount) throw new Error("Target address and ETH amount are required for financial proposals.");
+        tx = await gov.createFinancialProposal(
+          proposalDesc.trim(),
+          BigInt(proposalDuration),
+          proposalOptions.filter((o) => o.trim()),
+          targetAddress,
+          parseEther(ethAmount)
+        );
+      } else {
+        tx = await gov.createProposal(
+          proposalDesc.trim(),
+          BigInt(proposalDuration),
+          proposalOptions.filter((o) => o.trim())
+        );
+      }
       await tx.wait();
 
       alert("Proposal created successfully! 🎉");
@@ -269,6 +299,69 @@ function DAODashboard() {
       alert(message);
     } finally {
       setCreating(false);
+    }
+  };
+
+  const getProposalStatus = (proposal) => {
+    const now = Date.now() / 1000;
+    if (now <= proposal.endTime) return 'active';
+    if (proposal.executed) return 'executed';
+    
+    const option0Won = proposal.optionVotes[0] >= Math.max(...proposal.optionVotes);
+    const totalVotes = proposal.optionVotes.reduce((a, b) => a + b, 0);
+    
+    if (!option0Won) return 'failed';
+    if (totalVotes === 0) return 'failed';
+    return 'passed';
+  };
+
+  const executeProposal = async (proposalId) => {
+    try {
+      const provider = await getProvider();
+      const signer = await provider.getSigner();
+      const gov = new Contract(address, contracts.Governance.abi, signer);
+      
+      const tx = await gov.executeProposal(proposalId);
+      await tx.wait();
+      
+      alert('✅ Proposal executed successfully!');
+      await connectAndLoad();
+    } catch (err) {
+      alert(`Failed to execute: ${err?.reason || err?.message}`);
+    }
+  };
+
+  const finalizeProposal = async (proposalId) => {
+    try {
+      const provider = await getProvider();
+      const signer = await provider.getSigner();
+      const gov = new Contract(address, contracts.Governance.abi, signer);
+      
+      const tx = await gov.finalizeProposal(proposalId);
+      await tx.wait();
+      
+      alert('💸 Financial proposal finalized!');
+      await connectAndLoad();
+    } catch (err) {
+      alert(`Failed to finalize: ${err?.reason || err?.message}`);
+    }
+  };
+
+  const fundTreasury = async () => {
+    const amt = prompt("How much ETH do you want to send to the Treasury?");
+    if (!amt) return;
+    try {
+      const provider = await getProvider();
+      const signer = await provider.getSigner();
+      const tx = await signer.sendTransaction({
+        to: treasuryAddress,
+        value: parseEther(amt)
+      });
+      await tx.wait();
+      alert("✅ Treasury funded successfully!");
+      await connectAndLoad();
+    } catch (err) {
+      alert(`Funding failed: ${err.message}`);
     }
   };
 
@@ -501,6 +594,15 @@ function DAODashboard() {
           <p className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-1">Voting Power</p>
           <p className="text-2xl font-bold text-purple-600">{votingPower} Votes</p>
         </div>
+        <div className="bg-white rounded-2xl border border-gray-200 p-5 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-3">
+            <button onClick={fundTreasury} className="text-xs bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-2 py-1 rounded font-bold transition-colors">
+              + Fund
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-1">Treasury</p>
+          <p className="text-2xl font-bold text-emerald-600">{treasuryBalance} ETH</p>
+        </div>
       </div>
 
       {/* Proposals */}
@@ -536,29 +638,57 @@ function DAODashboard() {
                 <div className="p-6 border-b border-gray-100">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center space-x-2">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                          active
-                            ? "bg-green-50 text-green-700 border border-green-100"
-                            : p.executed
-                            ? "bg-purple-50 text-purple-700 border border-purple-100"
-                            : "bg-gray-100 text-gray-600 border border-gray-200"
-                        }`}
-                      >
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
-                            active ? "bg-green-500" : p.executed ? "bg-purple-500" : "bg-gray-400"
-                          }`}
-                        ></span>
-                        {active ? "Active" : p.executed ? "Executed" : "Ended"}
-                      </span>
+                      {getProposalStatus(p) === 'active' && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-100">
+                          <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-green-500"></span>Active
+                        </span>
+                      )}
+                      {getProposalStatus(p) === 'passed' && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-yellow-50 text-yellow-700 border border-yellow-100">
+                          <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-yellow-500"></span>Passed
+                        </span>
+                      )}
+                      {getProposalStatus(p) === 'failed' && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-100">
+                          <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-red-500"></span>Failed
+                        </span>
+                      )}
+                      {getProposalStatus(p) === 'executed' && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-emerald-500"></span>Executed
+                        </span>
+                      )}
+                      
                       <span className="text-xs text-gray-400">
                         Proposal #{p.id}
                       </span>
+                      {p.target && p.target !== "0x0000000000000000000000000000000000000000" && (
+                        <span className="ml-2 px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-600 border border-blue-100">
+                          💰 {p.value} ETH → {p.target.substring(0,6)}...
+                        </span>
+                      )}
                     </div>
-                    <span className="text-xs text-gray-400">
-                      {active ? getTimeRemaining(p.endTime) : "Voting closed"}
-                    </span>
+                    <div className="flex space-x-3 items-center">
+                      {getProposalStatus(p) === 'passed' && (
+                        <button 
+                          onClick={() => executeProposal(p.id)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg text-sm font-bold shadow-sm transition-colors"
+                        >
+                          ⚡ Execute
+                        </button>
+                      )}
+                      {p.executed && p.target && p.target !== "0x0000000000000000000000000000000000000000" && (
+                        <button 
+                          onClick={() => finalizeProposal(p.id)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-sm font-bold shadow-sm transition-colors"
+                        >
+                          💸 Finalize
+                        </button>
+                      )}
+                      <span className="text-xs text-gray-400">
+                        {active ? getTimeRemaining(p.endTime) : "Voting closed"}
+                      </span>
+                    </div>
                   </div>
                   <p className="text-gray-900 font-semibold text-base leading-relaxed">
                     {p.description}
@@ -699,6 +829,27 @@ function DAODashboard() {
             </p>
 
             <div className="space-y-4">
+              <div className="flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-100 mb-2">
+                <span className="text-sm font-medium text-gray-700">Financial Proposal?</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" checked={isFinancial} onChange={() => setIsFinancial(!isFinancial)} className="sr-only peer" />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
+
+              {isFinancial && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Target Address</label>
+                    <input type="text" value={targetAddress} onChange={e => setTargetAddress(e.target.value)} placeholder="0x..." className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">ETH Amount</label>
+                    <input type="number" step="0.01" value={ethAmount} onChange={e => setEthAmount(e.target.value)} placeholder="0.5" className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1.5">
                   Description

@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
 /// @title Treasury - A timelock-protected vault for DAO funds
 /// @notice Holds the community's ETH. Transactions must be queued and wait
 ///         for a mandatory delay before execution, giving the community time
 ///         to react to malicious proposals.
-contract Treasury {
+contract Treasury is ReentrancyGuard {
     address public governance;
     uint256 public timelockDelay;
 
@@ -63,7 +65,7 @@ contract Treasury {
 
     /// @notice Execute a queued transaction after the timelock delay has passed.
     ///         Anyone can call this to finalize a passed proposal.
-    function executeTransaction(bytes32 _txId) external {
+    function executeTransaction(bytes32 _txId) external nonReentrant {
         QueuedTransaction storage txn = queuedTransactions[_txId];
 
         require(txn.executeAfter != 0, "Transaction does not exist");

@@ -6,15 +6,16 @@ import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract BloomToken is ERC20, ERC20Pausable, ERC20Permit, ERC20Votes, AccessControl {
+contract BloomToken is ERC20, ERC20Pausable, ERC20Permit, ERC20Votes, AccessControl, Ownable {
     // Role-Based Access Control (RBAC)
     // MINTER_ROLE: Can mint new tokens (e.g., for community rewards or treasury)
     // PAUSER_ROLE: Can pause all token transfers in case of a security breach
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
-    constructor(uint256 initialSupply) ERC20("BlockBloom Token", "BLOOM") ERC20Permit("BlockBloom Token") {
+    constructor(uint256 initialSupply) ERC20("BlockBloom Token", "BLOOM") ERC20Permit("BlockBloom Token") Ownable(msg.sender) {
         // Grant the deployer all three roles: Admin, Minter, and Pauser
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(MINTER_ROLE, msg.sender);
@@ -24,8 +25,8 @@ contract BloomToken is ERC20, ERC20Pausable, ERC20Permit, ERC20Votes, AccessCont
         _mint(msg.sender, initialSupply);
     }
 
-    /// @notice Mint new tokens. Only callable by wallets with MINTER_ROLE.
-    function mint(address to, uint256 amount) public onlyRole(MINTER_ROLE) {
+    /// @notice Mint new tokens. Only callable by Owner.
+    function mint(address to, uint256 amount) public onlyOwner {
         _mint(to, amount);
     }
 
