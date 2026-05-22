@@ -35,6 +35,7 @@ contract Governance {
     event VoteCast(uint256 proposalId, address voter, uint256 optionIndex, uint256 weight);
     event ProposalQueued(uint256 proposalId, bytes32 timelockTxId);
     event ProposalExecuted(uint256 proposalId);
+    event ProposalCancelled(uint256 proposalId);
 
     constructor(string memory _name, address _tokenAddress, uint256 _proposalThreshold, uint256 _timelockDelay, uint256 _quorumPercentage) {
         name = _name;
@@ -161,6 +162,17 @@ contract Governance {
         require(p.timelockTxId != bytes32(0), "Not a financial proposal");
 
         treasury.executeTransaction(p.timelockTxId);
+    }
+
+    /// @notice Cancel a proposal. Only the proposer can cancel, and only before voting ends.
+    function cancelProposal(uint256 _proposalId) public {
+        Proposal storage p = proposals[_proposalId];
+        require(msg.sender == p.proposer, "Only proposer can cancel");
+        require(block.timestamp < p.endTime, "Voting already ended");
+        require(!p.executed, "Already executed");
+        
+        p.endTime = block.timestamp - 1; // Expire immediately
+        emit ProposalCancelled(_proposalId);
     }
 
     function getProposal(uint256 _proposalId) public view returns (
