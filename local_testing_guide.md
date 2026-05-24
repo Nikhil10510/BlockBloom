@@ -29,11 +29,25 @@ We simulate the Ethereum network locally to avoid Sepolia gas costs during dev t
 
 ---
 
-## ⚙️ Step 3: Start the Backend REST API & Event Indexer
-The backend is responsible for indexing events from the Hardhat chain to MongoDB, managing chat sessions, and serving the AI models.
-1. Open a new terminal and navigate to the `backend` folder:
+## 🚀 Step 3: Deploy Contracts & Auto-Update Configurations
+We deploy the smart contracts onto our local blockchain and auto-sync the addresses across the repository.
+1. Open a **second** terminal window and navigate to the `hardhat` folder:
    ```bash
-   cd backend
+   cd hardhat
+   ```
+2. Run the deployment and setup script:
+   ```bash
+   npm run setup
+   ```
+   *✨ This deploys `BloomToken` & `DAOFactory` to the local chain, and automatically synchronizes the contract addresses inside both `frontend/src/contracts.json` and `backend/.env`!*
+
+---
+
+## ⚙️ Step 4: Start the Backend REST API & Event Indexer
+The backend is responsible for indexing events from the Hardhat chain to MongoDB, managing chat sessions, and serving the AI models.
+1. In the **second** terminal window (after setup completes), navigate to the `backend` folder:
+   ```bash
+   cd ../backend
    npm install
    ```
 2. Set up your `.env` configuration file inside `backend/`:
@@ -46,8 +60,8 @@ The backend is responsible for indexing events from the Hardhat chain to MongoDB
 
 ---
 
-## 🎨 Step 4: Run the Frontend App
-1. Open a third terminal and navigate to the `frontend` folder:
+## 🎨 Step 5: Run the Frontend App
+1. Open a **third** terminal window and navigate to the `frontend` folder:
    ```bash
    cd frontend
    npm install
@@ -60,7 +74,7 @@ The backend is responsible for indexing events from the Hardhat chain to MongoDB
 
 ---
 
-## 🧪 Step 5: Verification & Testing Checklist
+## 🧪 Step 6: Verification & Testing Checklist
 
 Follow this checklist to confirm all features are operating correctly:
 
