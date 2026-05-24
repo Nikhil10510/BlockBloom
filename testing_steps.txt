@@ -1,10 +1,10 @@
 SIMPLE STEPS TO RUN AND TEST THE WEBSITE
 ========================================
 
-Follow these 4 simple steps to run the website on your computer:
+Follow these steps to run the website on your computer and avoid contract address errors:
 
-STEP 1: Run the Blockchain
--------------------------
+STEP 1: Start the Local Blockchain Node
+--------------------------------------
 1. Open a new terminal window.
 2. Go to the "hardhat" folder:
    cd hardhat
@@ -15,21 +15,30 @@ STEP 1: Run the Blockchain
 * Keep this window open!
 
 
-STEP 2: Run the Backend Server
+STEP 2: Deploy Contracts & Auto-Update Configurations
+----------------------------------------------------
+1. Open a SECOND terminal window.
+2. Go to the "hardhat" folder:
+   cd hardhat
+3. Run the local deploy script:
+   npx hardhat run deploy-local.js --network localhost
+* This automatically deploys the latest contracts and updates "frontend/src/contracts.json" and "backend/.env" for you! No manual copying needed.
+
+
+STEP 3: Run the Backend Server
 ----------------------------
-1. Open a second terminal window.
-2. Go to the "backend" folder:
-   cd backend
-3. Install dependencies:
+1. In the SECOND terminal window, go to the "backend" folder:
+   cd ../backend
+2. Install dependencies:
    npm install
-4. Start the server:
+3. Start the server:
    npm run dev
 * Keep this window open!
 
 
-STEP 3: Run the Website Frontend
+STEP 4: Run the Website Frontend
 ------------------------------
-1. Open a third terminal window.
+1. Open a THIRD terminal window.
 2. Go to the "frontend" folder:
    cd frontend
 3. Install dependencies:
@@ -39,7 +48,7 @@ STEP 3: Run the Website Frontend
 * Keep this window open!
 
 
-STEP 4: Open the Website in your browser
+STEP 5: Open the Website in your browser
 --------------------------------------
 1. Open your internet browser (like Chrome).
 2. Go to this address: http://localhost:5173
