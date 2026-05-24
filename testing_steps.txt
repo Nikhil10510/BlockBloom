@@ -1,0 +1,56 @@
+SIMPLE STEPS TO RUN AND TEST THE WEBSITE
+========================================
+
+Follow these 4 simple steps to run the website on your computer:
+
+STEP 1: Run the Blockchain
+-------------------------
+1. Open a new terminal window.
+2. Go to the "hardhat" folder:
+   cd hardhat
+3. Install dependencies:
+   npm install
+4. Start the local blockchain node:
+   npx hardhat node
+* Keep this window open!
+
+
+STEP 2: Run the Backend Server
+----------------------------
+1. Open a second terminal window.
+2. Go to the "backend" folder:
+   cd backend
+3. Install dependencies:
+   npm install
+4. Start the server:
+   npm run dev
+* Keep this window open!
+
+
+STEP 3: Run the Website Frontend
+------------------------------
+1. Open a third terminal window.
+2. Go to the "frontend" folder:
+   cd frontend
+3. Install dependencies:
+   npm install
+4. Start the web app:
+   npm run dev
+* Keep this window open!
+
+
+STEP 4: Open the Website in your browser
+--------------------------------------
+1. Open your internet browser (like Chrome).
+2. Go to this address: http://localhost:5173
+3. Have fun testing!
+
+
+WHAT TO TEST:
+=============
+1. CONNECT WALLET: Click the "Connect Wallet" button on the top right to connect your MetaMask.
+2. THEME TOGGLE: Click the Sun/Moon icon in the menu to switch between dark and light themes. Check out the custom slim scrollbars!
+3. DEPLOY DAO: Click "+ Deploy New DAO" on the home page and follow the steps.
+4. NEW PROPOSAL: Click into your deployed DAO and click "+ New Proposal" to create a vote.
+5. AI ASSISTANT: Click the blue robot chat bubble at the bottom right. Ask a question about your DAO treasury or proposals!
+6. VOTE & LEADERBOARD: Cast a vote and visit the "Leaderboard" page to see your ranking update instantly.
