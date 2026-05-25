@@ -311,11 +311,13 @@ async function pollBlockchain() {
     // 1. Sync Factory
     if (daoFactory) {
       const factorySync = await SyncState.findOne({ contractId: 'DAOFactory' });
-      // On brand new node / reset, start from 0
-      let startBlock = factorySync ? factorySync.lastSyncedBlock + 1 : 0;
+      // On brand new node / reset, start recent to avoid Alchemy's 50k block range limit
+      let startBlock = factorySync ? factorySync.lastSyncedBlock + 1 : Math.max(0, currentBlock - 49000);
       if (factorySync && factorySync.lastSyncedBlock > currentBlock) {
-        // If node reset and currentBlock is lower than last synced, reset sync state
-        startBlock = 0;
+        startBlock = Math.max(0, currentBlock - 49000);
+      }
+      if (currentBlock - startBlock > 49000) {
+         startBlock = currentBlock - 49000;
       }
 
       if (startBlock <= currentBlock) {
@@ -339,9 +341,12 @@ async function pollBlockchain() {
       const syncKey = `DAO:${daoAddress}`;
       const daoSync = await SyncState.findOne({ contractId: syncKey });
       
-      let startBlock = daoSync ? daoSync.lastSyncedBlock + 1 : dao.blockNumber || 0;
+      let startBlock = daoSync ? daoSync.lastSyncedBlock + 1 : dao.blockNumber || Math.max(0, currentBlock - 49000);
       if (daoSync && daoSync.lastSyncedBlock > currentBlock) {
-        startBlock = dao.blockNumber || 0;
+        startBlock = dao.blockNumber || Math.max(0, currentBlock - 49000);
+      }
+      if (currentBlock - startBlock > 49000) {
+         startBlock = currentBlock - 49000;
       }
 
       if (startBlock <= currentBlock) {
