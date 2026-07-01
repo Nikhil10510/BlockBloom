@@ -3,9 +3,11 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 import "./Treasury.sol";
 
-contract Election is Ownable {
+contract Election is Ownable, ReentrancyGuard, Pausable {
     string public name;
     uint256 public proposalCount;
     Treasury public treasury;
@@ -30,12 +32,12 @@ contract Election is Ownable {
     // proposalId => wallet => hasVoted
     mapping(uint256 => mapping(address => bool)) public hasVoted;
 
-    event ProposalCreated(uint256 id, address proposer, string description, uint256 endTime, address target, uint256 value);
-    event VoteCast(uint256 proposalId, address voter, uint256 optionIndex);
-    event ProposalQueued(uint256 proposalId, bytes32 timelockTxId);
-    event ProposalExecuted(uint256 proposalId);
-    event ProposalCancelled(uint256 proposalId);
-    event MerkleRootUpdated(bytes32 newRoot);
+    event ProposalCreated(uint256 indexed id, address indexed proposer, string description, uint256 endTime, address target, uint256 value);
+    event VoteCast(uint256 indexed proposalId, address indexed voter, uint256 indexed optionIndex);
+    event ProposalQueued(uint256 indexed proposalId, bytes32 timelockTxId);
+    event ProposalExecuted(uint256 indexed proposalId);
+    event ProposalCancelled(uint256 indexed proposalId);
+    event MerkleRootUpdated(bytes32 indexed newRoot);
 
     constructor(
         string memory _name,
@@ -55,12 +57,22 @@ contract Election is Ownable {
         emit MerkleRootUpdated(_merkleRoot);
     }
 
+    /// @notice Pause the election. Only callable by the Election Admin.
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    /// @notice Unpause the election. Only callable by the Election Admin.
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
     /// @notice Create a standard (non-financial) proposal
     function createProposal(
         string memory _description,
         uint256 _durationMinutes,
         string[] memory _options
-    ) public returns (uint256) {
+    ) public whenNotPaused returns (uint256) {
         return _createProposal(_description, _durationMinutes, _options, payable(address(0)), 0);
     }
 
@@ -71,7 +83,7 @@ contract Election is Ownable {
         string[] memory _options,
         address payable _target,
         uint256 _value
-    ) public returns (uint256) {
+    ) public whenNotPaused returns (uint256) {
         require(_target != address(0), "Target address cannot be zero");
         require(_value > 0, "Value must be greater than 0");
         return _createProposal(_description, _durationMinutes, _options, _target, _value);
@@ -113,7 +125,7 @@ contract Election is Ownable {
     }
 
     /// @notice Vote on a proposal using a Merkle Proof to verify eligibility
-    function vote(uint256 _proposalId, uint256 _optionIndex, bytes32[] calldata _merkleProof) public {
+    function vote(uint256 _proposalId, uint256 _optionIndex, bytes32[] calldata _merkleProof) public whenNotPaused nonReentrant {
         require(_proposalId > 0 && _proposalId <= proposalCount, "Invalid proposal ID");
 
         Proposal storage p = proposals[_proposalId];
@@ -136,7 +148,7 @@ contract Election is Ownable {
     /// @notice Execute a passed proposal. Identifies the winning option dynamically.
     ///         For financial proposals, it queues the transaction in the Treasury's timelock
     ///         only if Option 0 (e.g., "Approve") wins.
-    function executeProposal(uint256 _proposalId) public {
+    function executeProposal(uint256 _proposalId) public whenNotPaused nonReentrant {
         require(_proposalId > 0 && _proposalId <= proposalCount, "Invalid proposal ID");
 
         Proposal storage p = proposals[_proposalId];
@@ -176,7 +188,7 @@ contract Election is Ownable {
 
     /// @notice Finalize a financial proposal by executing the timelock transaction.
     ///         Anyone can call this after the timelock delay has passed.
-    function finalizeProposal(uint256 _proposalId) public {
+    function finalizeProposal(uint256 _proposalId) public whenNotPaused nonReentrant {
         require(_proposalId > 0 && _proposalId <= proposalCount, "Invalid proposal ID");
 
         Proposal storage p = proposals[_proposalId];
@@ -187,7 +199,7 @@ contract Election is Ownable {
     }
 
     /// @notice Cancel a proposal. Only the proposer can cancel, and only before voting ends.
-    function cancelProposal(uint256 _proposalId) public {
+    function cancelProposal(uint256 _proposalId) public whenNotPaused {
         Proposal storage p = proposals[_proposalId];
         require(msg.sender == p.proposer, "Only proposer can cancel");
         require(block.timestamp < p.endTime, "Voting already ended");

@@ -242,5 +242,55 @@ describe("Election & Treasury (Phase 3)", function () {
 
       await expect(election.executeProposal(1)).to.be.revertedWith("Quorum not met");
     });
+  // ─── PAUSABLE TESTS ───────────────────────────────────────────────
+  describe("Security: Pausable", function () {
+    const TIMELOCK_DELAY = 60;
+
+    async function deployElectionFixture() {
+      const { factory, owner, user1, user2, user3, recipient, tree, merkleRoot } = await deployContractsFixture();
+      const quorumVotes = 2;
+
+      await factory.connect(user1).createElection("org_pausable", "Pausable Election", TIMELOCK_DELAY, quorumVotes);
+      const elections = await factory.getElectionsByOrg("org_pausable");
+
+      const Election = await ethers.getContractFactory("Election");
+      const election = Election.attach(elections[0]);
+      
+      await election.connect(user1).setMerkleRoot(merkleRoot);
+
+      return { election, owner, user1, user2, tree };
+    }
+
+    it("Should allow the admin to pause and unpause the election", async function () {
+      const { election, user1 } = await loadFixture(deployElectionFixture);
+      
+      await election.connect(user1).pause();
+      expect(await election.paused()).to.be.true;
+
+      await election.connect(user1).unpause();
+      expect(await election.paused()).to.be.false;
+    });
+
+    it("Should block proposal creation and voting when paused", async function () {
+      const { election, user1, user2, tree } = await loadFixture(deployElectionFixture);
+      
+      await election.connect(user1).pause();
+
+      await expect(election.connect(user1).createProposal("Test", 10, ["A", "B"])).to.be.revertedWithCustomError(election, "EnforcedPause");
+
+      // Unpause to create a proposal, then pause again to test voting
+      await election.connect(user1).unpause();
+      await election.connect(user1).createProposal("Test", 10, ["A", "B"]);
+      await election.connect(user1).pause();
+
+      const proofUser2 = tree.getProof([user2.address]);
+      await expect(election.connect(user2).vote(1, 0, proofUser2)).to.be.revertedWithCustomError(election, "EnforcedPause");
+    });
+    
+    it("Should NOT allow non-admins to pause", async function () {
+      const { election, user2 } = await loadFixture(deployElectionFixture);
+      await expect(election.connect(user2).pause()).to.be.revertedWithCustomError(election, "OwnableUnauthorizedAccount").withArgs(user2.address);
+    });
   });
+});
 });
