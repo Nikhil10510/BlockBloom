@@ -9,6 +9,7 @@ import ElectionVote from "./pages/ElectionVote";
 import Organizations from "./pages/Organizations";
 import CreateProposal from "./pages/CreateProposal";
 import ProposalResults from "./pages/ProposalResults";
+import AdminDashboard from "./pages/AdminDashboard";
 import { useTheme } from "./utils/ThemeContext";
 import { useAuth } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -55,6 +56,15 @@ function App() {
                 Leaderboard
               </Link>
 
+              {user && user.role === 'superadmin' && (
+                <Link
+                  to="/admin"
+                  className="text-sm font-semibold text-gray-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                >
+                  Admin Panel
+                </Link>
+              )}
+
               {/* Theme Toggle */}
               <button
                 onClick={toggleTheme}
@@ -96,6 +106,13 @@ function App() {
 
             {/* Organizations — open to all authenticated users, not just admins */}
             <Route path="/organizations" element={<Organizations />} />
+
+            {/* Admin Dashboard */}
+            <Route path="/admin" element={
+              <ProtectedRoute requiredRoles={['superadmin']}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            } />
 
             {/* Election routes */}
             <Route path="/elections/:address" element={<ElectionDashboard />} />

@@ -632,6 +632,72 @@ function DAODashboard() {
     }
   };
 
+  const [dashboardTab, setDashboardTab] = useState("proposals");
+  const [govDocs, setGovDocs] = useState([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+
+  const [docTitle, setDocTitle] = useState("");
+  const [docContent, setDocContent] = useState("");
+  const [docType, setDocType] = useState("constitution");
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+
+  const fetchGovDocs = async () => {
+    setLoadingDocs(true);
+    try {
+      const res = await fetch(`${API_BASE}/ai/rag/documents?daoAddress=${address}`);
+      const data = await res.json();
+      if (data.success) {
+        setGovDocs(data.data || []);
+      }
+    } catch (err) {
+      console.warn("Failed to load governance documents:", err);
+    } finally {
+      setLoadingDocs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (dashboardTab === 'docs') {
+      fetchGovDocs();
+    }
+  }, [dashboardTab, address]);
+
+  const handleUploadDoc = async (e) => {
+    e.preventDefault();
+    if (!docTitle.trim() || !docContent.trim() || uploadingDoc) return;
+    setUploadingDoc(true);
+    try {
+      const res = await fetch(`${API_BASE}/ai/rag/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: docTitle.trim(),
+          content: docContent.trim(),
+          type: docType,
+          daoAddress: address,
+          userAddress: connectedAddress || "0x0000000000000000000000000000000000000000"
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast("Governance document indexed successfully! ✨", "success");
+        setShowUploadModal(false);
+        setDocTitle("");
+        setDocContent("");
+        setDocType("constitution");
+        fetchGovDocs();
+      } else {
+        showToast(data.message || "Failed to index document.", "error");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("Error uploading document.", "error");
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
   const handleSendChatMessage = async (e) => {
     e.preventDefault();
     if (!chatInput.trim() || chatLoading) return;
@@ -756,228 +822,399 @@ function DAODashboard() {
               + Fund
             </button>
           </div>
-          <p className="text-xs text-gray-400 dark:text-slate-500 font-medium uppercase tracking-wider mb-1">Treasury</p>
-          <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{treasuryBalance} ETH</p>
         </div>
       </div>
 
-      {/* Proposals */}
-      {proposals.length === 0 ? (
-        <div className="bg-white dark:bg-[#151b2c] rounded-3xl border border-gray-200 dark:border-slate-800 p-12 text-center shadow-sm transition-colors duration-300">
-          <div className="w-16 h-16 bg-gray-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl">
-            📋
-          </div>
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">No proposals yet</h3>
-          <p className="text-gray-500 dark:text-slate-400 mb-6">
-            Create the first governance proposal for this DAO.
-          </p>
-          <button
-            onClick={() => {
-              if (!isConnected) {
-                openConnectModal?.();
-              } else {
-                setShowCreateModal(true);
-              }
-            }}
-            className="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-950/60 font-semibold py-2 px-6 rounded-lg transition-colors"
-          >
-            Create Proposal
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-5">
-          {proposals.map((p) => {
-            const totalVotes = p.optionVotes.reduce((a, b) => a + b, 0);
-            const active = isActive(p.endTime);
-            const maxVotes = Math.max(...p.optionVotes);
+      {/* Tab Switcher */}
+      <div className="flex space-x-2 border-b border-gray-200 dark:border-slate-800 mb-8 max-w-md p-1 bg-gray-150 dark:bg-slate-900/60 rounded-2xl">
+        <button
+          onClick={() => setDashboardTab('proposals')}
+          className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-bold transition-all duration-200 ${
+            dashboardTab === 'proposals'
+              ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+              : 'text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
+          }`}
+        >
+          📋 Proposals
+        </button>
+        <button
+          onClick={() => setDashboardTab('docs')}
+          className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-bold transition-all duration-200 ${
+            dashboardTab === 'docs'
+              ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+              : 'text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
+          }`}
+        >
+          📚 Governance Docs
+        </button>
+      </div>
 
-            return (
-              <div
-                key={p.id}
-                className="bg-white dark:bg-[#151b2c] rounded-2xl border border-gray-200 dark:border-slate-800 overflow-hidden hover:shadow-md transition-all duration-300"
+      {dashboardTab === 'proposals' ? (
+        <>
+          {/* Proposals */}
+          {proposals.length === 0 ? (
+            <div className="bg-white dark:bg-[#151b2c] rounded-3xl border border-gray-200 dark:border-slate-800 p-12 text-center shadow-sm transition-colors duration-300">
+              <div className="w-16 h-16 bg-gray-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl">
+                📋
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">No proposals yet</h3>
+              <p className="text-gray-500 dark:text-slate-400 mb-6">
+                Create the first governance proposal for this DAO.
+              </p>
+              <button
+                onClick={() => {
+                  if (!isConnected) {
+                    openConnectModal?.();
+                  } else {
+                    setShowCreateModal(true);
+                  }
+                }}
+                className="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-950/60 font-semibold py-2 px-6 rounded-lg transition-colors"
               >
-                {/* Proposal Header */}
-                <div className="p-6 border-b border-gray-100 dark:border-slate-800">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center space-x-2">
-                      {getProposalStatus(p) === 'active' && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 border border-green-100 dark:border-green-900/40">
-                          <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-green-500"></span>Active
-                        </span>
-                      )}
-                      {getProposalStatus(p) === 'passed' && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-400 border border-yellow-100 dark:border-yellow-900/40">
-                          <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-yellow-500"></span>Passed
-                        </span>
-                      )}
-                      {getProposalStatus(p) === 'failed' && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900/40">
-                          <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-red-500"></span>Failed
-                        </span>
-                      )}
-                      {getProposalStatus(p) === 'quorum_not_met' && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 border border-orange-100 dark:border-orange-900/40">
-                          <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-orange-500"></span>Quorum Not Met
-                        </span>
-                      )}
-                      {getProposalStatus(p) === 'queued' && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900/40">
-                          <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-blue-500"></span>Queued
-                        </span>
-                      )}
-                      {getProposalStatus(p) === 'executed' && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/40">
-                          <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-emerald-500"></span>Executed
-                        </span>
-                      )}
-                      
-                      <span className="text-xs text-gray-400 dark:text-slate-500">
-                        Proposal #{p.id}
-                      </span>
-                      {p.target && p.target !== "0x0000000000000000000000000000000000000000" && (
-                        <span className="ml-2 px-2 py-0.5 rounded text-xs bg-blue-50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30">
-                          💰 {p.value} ETH → {p.target.substring(0,6)}...
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex space-x-3 items-center">
-                      {getProposalStatus(p) === 'active' && account && p.proposer.toLowerCase() === account.toLowerCase() && (
-                        <button 
-                          onClick={() => cancelProposal(p.id)}
-                          className="bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/40 px-3 py-1 rounded-lg text-sm font-bold shadow-sm transition-colors"
-                        >
-                          🚫 Cancel
-                        </button>
-                      )}
-                      {getProposalStatus(p) === 'passed' && (
-                        <button 
-                          onClick={() => executeProposal(p.id)}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg text-sm font-bold shadow-sm transition-colors"
-                        >
-                          ⚡ Execute
-                        </button>
-                      )}
-                      {getProposalStatus(p) === 'queued' && (() => {
-                        const remaining = p.executeAfter ? getTimelockTimeRemaining(p.executeAfter) : null;
-                        const disabled = remaining !== null;
-                        return (
-                          <button 
-                            onClick={() => finalizeProposal(p.id)}
-                            disabled={disabled}
-                            className={`px-3 py-1 rounded-lg text-sm font-bold shadow-sm transition-colors ${
-                              disabled
-                                ? "bg-gray-100 dark:bg-slate-800 text-gray-400 dark:text-slate-550 cursor-not-allowed"
-                                : "bg-blue-600 hover:bg-blue-700 text-white"
-                            }`}
-                          >
-                            {disabled ? `⏳ Locked (${remaining})` : "💸 Finalize"}
-                          </button>
-                        );
-                      })()}
-                      <span className="text-xs text-gray-400 dark:text-slate-500">
-                        {active ? getTimeRemaining(p.endTime) : "Voting closed"}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-gray-900 dark:text-white font-semibold text-base leading-relaxed">
-                    {p.description}
-                  </p>
-                  <p className="text-xs text-gray-400 dark:text-slate-500 mt-2">
-                    by {p.proposer.substring(0, 6)}...{p.proposer.substring(38)} · {totalVotes.toLocaleString()} total votes
-                  </p>
+                Create Proposal
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {proposals.map((p) => {
+                const totalVotes = p.optionVotes.reduce((a, b) => a + b, 0);
+                const active = isActive(p.endTime);
+                const maxVotes = Math.max(...p.optionVotes);
 
-                  {/* AI Summary */}
-                  <div className="mt-3">
-                    {aiSummaries[p.id] ? (
-                      <div className="bg-purple-50 dark:bg-purple-950/20 border border-purple-100 dark:border-purple-900/40 rounded-xl px-4 py-3">
-                        <p className="text-xs font-semibold text-purple-600 dark:text-purple-400 mb-1 flex items-center justify-between">
-                          <span className="flex items-center"><span className="mr-1">✨</span> AI Summary</span>
-                        </p>
-                        <p className="text-sm text-purple-800 dark:text-purple-300 leading-relaxed">
-                          {aiSummaries[p.id]}
-                        </p>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => summarizeProposal(p.id, p.description)}
-                        disabled={summarizing[p.id]}
-                        className="text-xs font-semibold text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 bg-purple-50 dark:bg-purple-950/20 hover:bg-purple-100 dark:hover:bg-purple-950/40 border border-purple-100 dark:border-purple-900/30 px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
-                      >
-                        {summarizing[p.id] ? (
-                          <span className="flex items-center">
-                            <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Summarizing...
+                return (
+                  <div
+                    key={p.id}
+                    className="bg-white dark:bg-[#151b2c] rounded-2xl border border-gray-200 dark:border-slate-800 overflow-hidden hover:shadow-md transition-all duration-300"
+                  >
+                    {/* Proposal Header */}
+                    <div className="p-6 border-b border-gray-100 dark:border-slate-800">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center space-x-2">
+                          {getProposalStatus(p) === 'active' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 border border-green-100 dark:border-green-900/40">
+                              <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-green-500"></span>Active
+                            </span>
+                          )}
+                          {getProposalStatus(p) === 'passed' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-400 border border-yellow-100 dark:border-yellow-900/40">
+                              <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-yellow-500"></span>Passed
+                            </span>
+                          )}
+                          {getProposalStatus(p) === 'failed' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border border-red-100 dark:border-red-900/40">
+                              <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-red-500"></span>Failed
+                            </span>
+                          )}
+                          {getProposalStatus(p) === 'quorum_not_met' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 border border-orange-100 dark:border-orange-900/40">
+                              <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-orange-500"></span>Quorum Not Met
+                            </span>
+                          )}
+                          {getProposalStatus(p) === 'queued' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900/40">
+                              <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-blue-500"></span>Queued
+                            </span>
+                          )}
+                          {getProposalStatus(p) === 'executed' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-450 border border-emerald-100 dark:border-emerald-900/40">
+                              <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-emerald-500"></span>Executed
+                            </span>
+                          )}
+                          
+                          <span className="text-xs text-gray-400 dark:text-slate-500">
+                            Proposal #{p.id}
                           </span>
-                        ) : (
-                          "✨ Summarize with AI"
-                        )}
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Voting Options */}
-                <div className="p-6">
-                  <div className="space-y-3">
-                    {p.optionNames.map((opt, idx) => {
-                      const votes = p.optionVotes[idx];
-                      const pct = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
-                      const isWinning = votes === maxVotes && totalVotes > 0;
-
-                      return (
-                        <div key={idx} className="relative">
-                          <div
-                            className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
-                              isWinning && !active
-                                ? "border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-950/20"
-                                : "border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/20"
-                            }`}
-                          >
-                            <div className="flex items-center space-x-3 z-10 relative">
-                              {active && (
-                                <button
-                                  onClick={() => castVote(p.id, idx)}
-                                  disabled={votingOn === p.id}
-                                  className="w-7 h-7 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center text-xs font-bold transition-colors shadow-sm disabled:opacity-50"
-                                >
-                                  ✓
-                                </button>
-                              )}
-                              <span className="text-sm font-medium text-gray-800 dark:text-slate-200">{opt}</span>
-                            </div>
-                            <div className="flex items-center space-x-3 z-10 relative">
-                              <span className="text-xs text-gray-500 dark:text-slate-400">{votes.toLocaleString()} votes</span>
-                              <span
-                                className={`text-sm font-bold ${
-                                  isWinning && totalVotes > 0 ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 dark:text-slate-500"
+                          {p.target && p.target !== "0x0000000000000000000000000000000000000000" && (
+                            <span className="ml-2 px-2 py-0.5 rounded text-xs bg-blue-50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30">
+                              💰 {p.value} ETH → {p.target.substring(0,6)}...
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex space-x-3 items-center">
+                          {getProposalStatus(p) === 'active' && account && p.proposer.toLowerCase() === account.toLowerCase() && (
+                            <button 
+                              onClick={() => cancelProposal(p.id)}
+                              className="bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/40 px-3 py-1 rounded-lg text-sm font-bold shadow-sm transition-colors"
+                            >
+                              🚫 Cancel
+                            </button>
+                          )}
+                          {getProposalStatus(p) === 'passed' && (
+                            <button 
+                              onClick={() => executeProposal(p.id)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg text-sm font-bold shadow-sm transition-colors"
+                            >
+                              ⚡ Execute
+                            </button>
+                          )}
+                          {getProposalStatus(p) === 'queued' && (() => {
+                            const remaining = p.executeAfter ? getTimelockTimeRemaining(p.executeAfter) : null;
+                            const disabled = remaining !== null;
+                            return (
+                              <button 
+                                onClick={() => finalizeProposal(p.id)}
+                                disabled={disabled}
+                                className={`px-3 py-1 rounded-lg text-sm font-bold shadow-sm transition-colors ${
+                                  disabled
+                                    ? "bg-gray-100 dark:bg-slate-800 text-gray-400 dark:text-slate-550 cursor-not-allowed"
+                                    : "bg-blue-600 hover:bg-blue-700 text-white"
                                 }`}
                               >
-                                {pct}%
-                              </span>
-                            </div>
-                          </div>
-                          {/* Progress bar */}
-                          <div className="absolute bottom-0 left-0 h-1 rounded-b-xl overflow-hidden w-full">
-                            <div
-                              className={`h-full transition-all duration-700 ${
-                                isWinning ? "bg-indigo-400 dark:bg-indigo-500" : "bg-gray-300 dark:bg-slate-700"
-                              }`}
-                              style={{ width: `${pct}%` }}
-                            ></div>
-                          </div>
+                                {disabled ? `⏳ Locked (${remaining})` : "💸 Finalize"}
+                              </button>
+                            );
+                          })()}
+                          <span className="text-xs text-gray-400 dark:text-slate-500">
+                            {active ? getTimeRemaining(p.endTime) : "Voting closed"}
+                          </span>
                         </div>
-                      );
-                    })}
+                      </div>
+                      <p className="text-gray-900 dark:text-white font-semibold text-base leading-relaxed">
+                        {p.description}
+                      </p>
+                      <p className="text-xs text-gray-400 dark:text-slate-500 mt-2">
+                        by {p.proposer.substring(0, 6)}...{p.proposer.substring(38)} · {totalVotes.toLocaleString()} total votes
+                      </p>
+
+                      {/* AI Summary */}
+                      <div className="mt-3">
+                        {aiSummaries[p.id] ? (
+                          <div className="bg-purple-50 dark:bg-purple-950/20 border border-purple-100 dark:border-purple-900/40 rounded-xl px-4 py-3">
+                            <p className="text-xs font-semibold text-purple-600 dark:text-purple-400 mb-1 flex items-center justify-between">
+                              <span className="flex items-center"><span className="mr-1">✨</span> AI Summary</span>
+                            </p>
+                            <p className="text-sm text-purple-800 dark:text-purple-300 leading-relaxed">
+                              {aiSummaries[p.id]}
+                            </p>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => summarizeProposal(p.id, p.description)}
+                            disabled={summarizing[p.id]}
+                            className="text-xs font-semibold text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 bg-purple-50 dark:bg-purple-950/20 hover:bg-purple-100 dark:hover:bg-purple-950/40 border border-purple-100 dark:border-purple-900/30 px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                          >
+                            {summarizing[p.id] ? (
+                              <span className="flex items-center">
+                                <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Summarizing...
+                              </span>
+                            ) : (
+                              "✨ Summarize with AI"
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Voting Options */}
+                    <div className="p-6">
+                      <div className="space-y-3">
+                        {p.optionNames.map((opt, idx) => {
+                          const votes = p.optionVotes[idx];
+                          const pct = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
+                          const isWinning = votes === maxVotes && totalVotes > 0;
+
+                          return (
+                            <div key={idx} className="relative">
+                              <div
+                                className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
+                                  isWinning && !active
+                                    ? "border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-950/20"
+                                    : "border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/20"
+                                }`}
+                              >
+                                <div className="flex items-center space-x-3 z-10 relative">
+                                  {active && (
+                                    <button
+                                      onClick={() => castVote(p.id, idx)}
+                                      disabled={votingOn === p.id}
+                                      className="w-7 h-7 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center text-xs font-bold transition-colors shadow-sm disabled:opacity-50"
+                                    >
+                                      ✓
+                                    </button>
+                                  )}
+                                  <span className="text-sm font-medium text-gray-800 dark:text-slate-200">{opt}</span>
+                                </div>
+                                <div className="flex items-center space-x-3 z-10 relative">
+                                  <span className="text-xs text-gray-500 dark:text-slate-400">{votes.toLocaleString()} votes</span>
+                                  <span
+                                    className={`text-sm font-bold ${
+                                      isWinning && totalVotes > 0 ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400 dark:text-slate-500"
+                                    }`}
+                                  >
+                                    {pct}%
+                                  </span>
+                                </div>
+                              </div>
+                              {/* Progress bar */}
+                              <div className="absolute bottom-0 left-0 h-1 rounded-b-xl overflow-hidden w-full">
+                                <div
+                                  className={`h-full transition-all duration-700 ${
+                                    isWinning ? "bg-indigo-400 dark:bg-indigo-500" : "bg-gray-300 dark:bg-slate-700"
+                                  }`}
+                                  style={{ width: `${pct}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      ) : (
+        /* RAG Governance Docs Tab View */
+        <div className="space-y-6 animate-fade-in">
+          <div className="bg-white dark:bg-[#151b2c] p-6 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">DAO Knowledge Base (RAG)</h3>
+              <p className="text-xs text-gray-500 dark:text-slate-400 mt-1 max-w-xl">
+                Upload constitutions, bylaws, or budgets. The AI Copilot uses these documents to ground its chat replies in your actual community policies.
+              </p>
+            </div>
+            {(user?.role === 'admin' || user?.role === 'superadmin') && (
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg text-sm shadow-sm transition-colors shrink-0"
+              >
+                + Upload Document
+              </button>
+            )}
+          </div>
+
+          {loadingDocs ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+            </div>
+          ) : govDocs.length === 0 ? (
+            <div className="bg-white dark:bg-[#151b2c] rounded-2xl border border-gray-200 dark:border-slate-800 p-12 text-center shadow-sm">
+              <div className="w-16 h-16 bg-gray-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl">
+                📚
+              </div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">No governance documents indexed</h3>
+              <p className="text-sm text-gray-550 dark:text-slate-400">
+                AI Copilot will use standard baseline DAO context until documents are indexed.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {govDocs.map((doc) => (
+                <div key={doc.documentId} className="bg-white dark:bg-[#151b2c] p-5 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-full h-0.5 bg-indigo-500"></div>
+                  <div>
+                    <div className="flex justify-between items-start gap-2 mb-3">
+                      <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                        {doc.type}
+                      </span>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                        doc.indexStatus === 'indexed'
+                          ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-450'
+                          : 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-450'
+                      }`}>
+                        {doc.indexStatus === 'indexed' ? 'Indexed' : 'Processing'}
+                      </span>
+                    </div>
+                    <h4 className="text-base font-bold text-gray-900 dark:text-white mb-2">{doc.title}</h4>
+                    <p className="text-xs text-gray-405 dark:text-slate-500 font-semibold mb-3">
+                      Indexed chunks: {doc.chunksIndexed || 0}
+                    </p>
+                  </div>
+                  <div className="text-[10px] text-gray-400 dark:text-slate-500 font-medium">
+                    Added: {new Date(doc.createdAt).toLocaleDateString()}
                   </div>
                 </div>
+              ))}
+            </div>
+          )
+        }
+      </div>
+    )}
+      {/* ─── RAG Document Upload Modal ─── */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => !uploadingDoc && setShowUploadModal(false)}
+          ></div>
+          <div className="relative bg-white dark:bg-[#151b2c] rounded-3xl border border-gray-200 dark:border-slate-800 shadow-2xl w-full max-w-md p-8 mx-4 max-h-[90vh] overflow-y-auto transition-colors duration-300">
+            <button
+              onClick={() => !uploadingDoc && setShowUploadModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center mx-auto mb-5 shadow-lg">
+              <span className="text-white text-xl">📚</span>
+            </div>
+
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white text-center mb-1">
+              Index Governance Document
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-slate-400 text-center mb-6">
+              Index raw charter text or bylaws to the AI Copilot.
+            </p>
+
+            <form onSubmit={handleUploadDoc} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-slate-400 mb-1.5">Document Title</label>
+                <input
+                  type="text"
+                  value={docTitle}
+                  onChange={e => setDocTitle(e.target.value)}
+                  placeholder="e.g. BlockBloom Community Charter v1.0"
+                  className="w-full border border-gray-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white bg-white dark:bg-[#0b0f19] focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  required
+                />
               </div>
-            );
-          })}
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-slate-400 mb-1.5">Document Type</label>
+                <select
+                  value={docType}
+                  onChange={e => setDocType(e.target.value)}
+                  className="w-full border border-gray-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white bg-white dark:bg-[#0b0f19] focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                >
+                  <option value="constitution">📜 Constitution / Charter</option>
+                  <option value="bylaws">📖 Bylaws / Operating Agreement</option>
+                  <option value="budget">💰 Budget Proposal</option>
+                  <option value="other">📝 Other document</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-slate-400 mb-1.5">Document Content</label>
+                <textarea
+                  value={docContent}
+                  onChange={e => setDocContent(e.target.value)}
+                  placeholder="Paste the full plain text of the document here..."
+                  rows={6}
+                  className="w-full border border-gray-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white bg-white dark:bg-[#0b0f19] focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={uploadingDoc || !docTitle.trim() || !docContent.trim()}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all shadow-sm hover:shadow-md disabled:opacity-50 mt-4"
+              >
+                {uploadingDoc ? "Indexing Document..." : "⚡ Index into AI Knowledge Base"}
+              </button>
+            </form>
+          </div>
         </div>
       )}
+
       {/* ─── Create Proposal Modal ─── */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">

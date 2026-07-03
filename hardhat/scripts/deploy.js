@@ -12,17 +12,17 @@ async function main() {
   const tokenAddress = await token.getAddress();
   console.log("BloomToken deployed to:", tokenAddress);
 
-  // 2. Deploy DAOFactory
-  const Factory = await hre.ethers.getContractFactory("DAOFactory");
+  // 2. Deploy ElectionFactory
+  const Factory = await hre.ethers.getContractFactory("ElectionFactory");
   const factory = await Factory.deploy();
   await factory.waitForDeployment();
   const factoryAddress = await factory.getAddress();
-  console.log("DAOFactory deployed to:", factoryAddress);
+  console.log("ElectionFactory deployed to:", factoryAddress);
 
   // 3. Output for the backend .env
   console.log("\n✅ Add these to your backend/.env file:");
-  console.log(`DAO_FACTORY_ADDRESS=${factoryAddress}`);
-  console.log(`RPC_URL=http://127.0.0.1:8545`);
+  console.log(`ELECTION_FACTORY_ADDRESS=${factoryAddress}`);
+  console.log(`BLOOM_TOKEN_ADDRESS=${tokenAddress}`);
 }
 
 main().catch((error) => {

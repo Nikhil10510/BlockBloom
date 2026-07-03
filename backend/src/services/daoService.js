@@ -11,19 +11,12 @@
  *     - Database queries are centralized — no raw Mongoose calls in controllers.
  */
 
-const { DAO } = require('../models');
+const { Election } = require('../models');
 const { ApiError } = require('../utils');
 
 class DAOService {
   /**
-   * Get all DAOs with pagination and optional filtering.
-   *
-   * @param {Object} options
-   * @param {number} options.page - Page number (1-indexed)
-   * @param {number} options.limit - Items per page
-   * @param {string} [options.creator] - Filter by creator address
-   * @param {string} [options.sortBy] - Sort field (default: createdAt)
-   * @param {string} [options.sortOrder] - 'asc' or 'desc' (default: desc)
+   * Get all Elections (acting as DAOs) with pagination and optional filtering.
    */
   async getAll({ page = 1, limit = 10, creator, sortBy = 'createdAt', sortOrder = 'desc' } = {}) {
     const filter = {};
@@ -32,13 +25,13 @@ class DAOService {
     const skip = (page - 1) * limit;
     const sort = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
 
-    const [daos, total] = await Promise.all([
-      DAO.find(filter).sort(sort).skip(skip).limit(limit).lean(),
-      DAO.countDocuments(filter),
+    const [elections, total] = await Promise.all([
+      Election.find(filter).sort(sort).skip(skip).limit(limit).lean(),
+      Election.countDocuments(filter),
     ]);
 
     return {
-      data: daos,
+      data: elections,
       pagination: {
         page,
         limit,
@@ -51,28 +44,28 @@ class DAOService {
   }
 
   /**
-   * Get a single DAO by its contract address.
+   * Get a single Election by its contract address.
    */
   async getByAddress(contractAddress) {
-    const dao = await DAO.findOne({
+    const election = await Election.findOne({
       contractAddress: contractAddress.toLowerCase(),
     }).lean();
 
-    if (!dao) {
-      throw ApiError.notFound(`DAO not found at address: ${contractAddress}`);
+    if (!election) {
+      throw ApiError.notFound(`Election not found at address: ${contractAddress}`);
     }
 
-    return dao;
+    return election;
   }
 
   /**
-   * Get aggregate statistics across all DAOs.
+   * Get aggregate statistics across all Elections.
    */
   async getStats() {
     const [totalDAOs, totalProposals, totalVotes] = await Promise.all([
-      DAO.countDocuments(),
-      DAO.aggregate([{ $group: { _id: null, total: { $sum: '$proposalCount' } } }]),
-      DAO.aggregate([{ $group: { _id: null, total: { $sum: '$totalVotes' } } }]),
+      Election.countDocuments(),
+      Election.aggregate([{ $group: { _id: null, total: { $sum: '$proposalCount' } } }]),
+      Election.aggregate([{ $group: { _id: null, total: { $sum: '$totalVotes' } } }]),
     ]);
 
     return {

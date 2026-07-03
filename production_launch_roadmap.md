@@ -38,9 +38,9 @@ graph TD
      ```
   3. Deploy the contracts:
      ```bash
-     npx hardhat run scripts/deploy-local.js --network sepolia
+     npx hardhat run deploy-local.js --network sepolia
      ```
-  4. Copy the resulting deployed contract addresses for **`BloomToken`** and **`DAOFactory`** and share them with Nikhil and Kushagra.
+  4. Copy the resulting deployed contract addresses for **`BloomToken`** and **`ElectionFactory`** and share them with Nikhil and Kushagra.
 
 ---
 
@@ -63,7 +63,7 @@ graph TD
      USE_IN_MEMORY_DB=false
      MONGODB_URI=mongodb+srv://your_atlas_uri
      RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_ALCHEMY_KEY
-     DAO_FACTORY_ADDRESS=0x_sepolia_address_from_step_2
+     ELECTION_FACTORY_ADDRESS=0x_sepolia_address_from_step_2
      BLOOM_TOKEN_ADDRESS=0x_sepolia_address_from_step_2
      CORS_ORIGIN=https://blockbloom.vercel.app  # (Set to your Vercel URL)
      JWT_SECRET=generate_a_random_32_character_string

@@ -4,6 +4,8 @@ import { SiweMessage } from 'siwe';
 
 const AuthContext = createContext();
 
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+
 export function AuthProvider({ children }) {
   const { address, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
@@ -14,7 +16,7 @@ export function AuthProvider({ children }) {
 
   const fetchProfile = async (currentToken) => {
     try {
-      const res = await fetch('/api/auth/me', {
+      const res = await fetch(`${API_BASE}/auth/me`, {
         headers: { Authorization: `Bearer ${currentToken}` }
       });
       if (res.ok) {
@@ -42,7 +44,7 @@ export function AuthProvider({ children }) {
   const login = async (chainId) => {
     if (!address) return;
     try {
-      const nonceRes = await fetch('/api/auth/nonce');
+      const nonceRes = await fetch(`${API_BASE}/auth/nonce`);
       const { nonce } = await nonceRes.json();
 
       const message = new SiweMessage({
@@ -58,7 +60,7 @@ export function AuthProvider({ children }) {
       const preparedMessage = message.prepareMessage();
       const signature = await signMessageAsync({ message: preparedMessage });
 
-      const verifyRes = await fetch('/api/auth/verify', {
+      const verifyRes = await fetch(`${API_BASE}/auth/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: preparedMessage, signature })

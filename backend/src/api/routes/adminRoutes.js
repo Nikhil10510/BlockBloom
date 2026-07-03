@@ -6,9 +6,7 @@ const { requireRole } = require('../middleware/rbac');
 
 // All admin routes require SuperAdmin role
 router.use(requireAuth);
-// Assuming rbac takes roles. If not available, we can just use a simple role check, 
-// but we will assume rbac('SuperAdmin') works based on prior phases.
-router.use(requireRole('SuperAdmin'));
+router.use(requireRole('superadmin'));
 
 router.get('/audit-logs', adminController.getAuditLogs);
 router.get('/analytics/voters', adminController.getVoterAnalytics);

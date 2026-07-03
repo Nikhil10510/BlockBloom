@@ -73,26 +73,30 @@ function Home() {
       // 2. On-chain Fallback
       if (!getEthersProvider()) return;
       const provider = await getProvider();
-      await ensureContractDeployed(provider, contracts.DAOFactory.address, "DAOFactory");
+      const factoryAddress = contracts.ElectionFactory?.address;
+      const factoryABI = contracts.ElectionFactory?.abi;
+      if (!factoryAddress) return;
+
+      await ensureContractDeployed(provider, factoryAddress, "ElectionFactory");
 
       const factory = new Contract(
-        contracts.DAOFactory.address,
-        contracts.DAOFactory.abi,
+        factoryAddress,
+        factoryABI,
         provider
       );
 
-      const deployedDaos = await factory.getDeployedDAOs();
+      const deployedElections = await factory.getAllElections();
 
-      const daoDetails = await Promise.all(
-        deployedDaos.map(async (address) => {
-          const gov = new Contract(address, contracts.Governance.abi, provider);
-          const name = await gov.name();
-          const proposalCount = await gov.proposalCount();
+      const details = await Promise.all(
+        deployedElections.map(async (address) => {
+          const elect = new Contract(address, contracts.Election.abi, provider);
+          const name = await elect.name();
+          const proposalCount = await elect.proposalCount();
           return { address, name, proposals: Number(proposalCount) };
         })
       );
 
-      setDaos(daoDetails);
+      setDaos(details);
     } catch (err) {
       const message = err?.message || "Failed to fetch DAOs.";
       setErrorMessage(message);
@@ -202,16 +206,10 @@ function Home() {
           </p>
         </div>
         <button
-          onClick={() => {
-            if (!isConnected) {
-              openConnectModal?.();
-            } else {
-              setShowModal(true);
-            }
-          }}
+          onClick={() => navigate("/organizations")}
           className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-5 rounded-xl shadow-sm transition-all duration-200"
         >
-          + Deploy New DAO
+          Manage Organizations
         </button>
       </div>
 
@@ -256,16 +254,10 @@ function Home() {
             Be the first to create a community governance protocol.
           </p>
           <button
-            onClick={() => {
-              if (!isConnected) {
-                openConnectModal?.();
-              } else {
-                setShowModal(true);
-              }
-            }}
+            onClick={() => navigate("/organizations")}
             className="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-950/60 font-semibold py-2 px-6 rounded-lg transition-colors"
           >
-            Deploy New DAO
+            Go to Organizations
           </button>
         </div>
       ) : (

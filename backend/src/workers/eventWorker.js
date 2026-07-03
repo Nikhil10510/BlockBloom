@@ -103,6 +103,14 @@ async function handleProposalCreated(data) {
   if (!exists) {
     emitToDAO(data.daoAddress, 'proposal:created', proposal.toObject());
     emitGlobal('proposal:created', proposal.toObject());
+
+    const { AuditLog } = require('../models');
+    await AuditLog.create({
+      action: 'PROPOSAL_CREATED',
+      performedBy: data.proposer,
+      targetResource: `Proposal:${data.proposalId}`,
+      metadata: { daoAddress: data.daoAddress, description: data.description }
+    });
   }
 }
 
@@ -173,6 +181,14 @@ async function handleProposalQueued(data) {
   if (proposal) {
     logger.info(`⏳ Proposal #${data.proposalId} queued in timelock with txId ${data.timelockTxId} via Worker`);
     emitToDAO(data.daoAddress, 'proposal:updated', proposal.toObject());
+
+    const { AuditLog } = require('../models');
+    await AuditLog.create({
+      action: 'PROPOSAL_QUEUED',
+      performedBy: 'system',
+      targetResource: `Proposal:${data.proposalId}`,
+      metadata: { daoAddress: data.daoAddress, timelockTxId: data.timelockTxId }
+    });
   }
 }
 
@@ -185,6 +201,14 @@ async function handleProposalExecuted(data) {
       logger.info(`✅ Proposal #${data.proposalId} executed via Worker`);
       emitToDAO(data.daoAddress, 'proposal:updated', proposal.toObject());
       emitToDAO(data.daoAddress, 'proposal:executed', { proposalId: data.proposalId });
+
+      const { AuditLog } = require('../models');
+      await AuditLog.create({
+        action: 'PROPOSAL_EXECUTED',
+        performedBy: 'system',
+        targetResource: `Proposal:${data.proposalId}`,
+        metadata: { daoAddress: data.daoAddress }
+      });
   }
 }
 
@@ -198,6 +222,14 @@ async function handleProposalCancelled(data) {
     logger.info(`🚫 Proposal #${data.proposalId} cancelled via Worker`);
     emitToDAO(data.daoAddress, 'proposal:updated', proposal.toObject());
     emitToDAO(data.daoAddress, 'proposal:cancelled', { proposalId: data.proposalId });
+
+    const { AuditLog } = require('../models');
+    await AuditLog.create({
+      action: 'PROPOSAL_CANCELLED',
+      performedBy: 'system',
+      targetResource: `Proposal:${data.proposalId}`,
+      metadata: { daoAddress: data.daoAddress }
+    });
   }
 }
 
@@ -210,6 +242,14 @@ async function handleTransactionExecuted(data) {
   if (proposal) {
     logger.info(`💸 Financial Proposal #${proposal.proposalId} finalized via Worker`);
     emitToDAO(data.daoAddress, 'proposal:updated', proposal.toObject());
+
+    const { AuditLog } = require('../models');
+    await AuditLog.create({
+      action: 'PROPOSAL_FINALIZED',
+      performedBy: 'system',
+      targetResource: `Proposal:${proposal.proposalId}`,
+      metadata: { daoAddress: data.daoAddress, txId: data.txId }
+    });
   }
 }
 
