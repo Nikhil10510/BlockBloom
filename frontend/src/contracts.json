@@ -1,6 +1,6 @@
 {
   "BloomToken": {
-    "address": "0xe2955432612504a5276286C7f81D3b5D5A58f933",
+    "address": "0xE79404a6a1c6085BCe9De11DC5705492eF2fF173",
     "abi": [
       {
         "inputs": [
@@ -1512,7 +1512,7 @@
     ]
   },
   "ElectionFactory": {
-    "address": "0xB9384A9638b26a845Dd58300793525116d7d7A3e",
+    "address": "0x282e16edFeAAf66a5d86665e10237A2e380e09C7",
     "abi": [
       {
         "anonymous": false,
