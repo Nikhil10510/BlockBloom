@@ -146,7 +146,18 @@ async function startServer() {
     // Step 3: Start the blockchain event indexer
     await startEventIndexer();
 
-    // Step 4: Start cron jobs
+    // Step 4: Close any expired proposals immediately on startup
+    // (Render free tier sleeps after 15min — cron may have missed closures)
+    try {
+      const startupResult = await proposalService.closeExpiredProposals();
+      if (startupResult.closedCount > 0) {
+        logger.info(`Startup: Closed ${startupResult.closedCount} expired proposals.`);
+      }
+    } catch (error) {
+      logger.error('Startup: Error closing expired proposals:', error);
+    }
+
+    // Step 5: Start cron jobs (runs every hour as a safety net)
     cron.schedule('0 * * * *', async () => {
       logger.info('Running cron job: closeExpiredProposals');
       try {
@@ -158,6 +169,7 @@ async function startServer() {
         logger.error('Error running closeExpiredProposals cron job:', error);
       }
     });
+
 
     // Step 4: Start listening for HTTP requests
     server.listen(config.port, () => {

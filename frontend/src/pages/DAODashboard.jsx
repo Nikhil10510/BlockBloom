@@ -379,7 +379,8 @@ function DAODashboard() {
     }
     
     const now = Date.now() / 1000;
-    if (now <= proposal.endTime) return 'active';
+    const targetEnd = typeof proposal.endTime === 'number' ? proposal.endTime : (new Date(proposal.endTime).getTime() / 1000);
+    if (!isNaN(targetEnd) && now <= targetEnd) return 'active';
     
     const totalVotes = proposal.optionVotes.reduce((a, b) => a + b, 0);
     const requiredQuorum = proposal.requiredQuorum || 0;
@@ -538,17 +539,24 @@ function DAODashboard() {
   };
 
   const getTimeRemaining = (endTime) => {
+    if (!endTime) return "Ended";
+    const target = typeof endTime === 'number' ? endTime : Math.floor(new Date(endTime).getTime() / 1000);
     const now = Math.floor(Date.now() / 1000);
-    const diff = endTime - now;
-    if (diff <= 0) return "Ended";
+    const diff = target - now;
+    if (isNaN(diff) || diff <= 0) return "Ended";
     const mins = Math.floor(diff / 60);
     const hrs = Math.floor(mins / 60);
+    const days = Math.floor(hrs / 24);
+    if (days > 0) return `${days}d ${hrs % 24}h remaining`;
     if (hrs > 0) return `${hrs}h ${mins % 60}m remaining`;
     return `${mins}m remaining`;
   };
 
   const isActive = (endTime) => {
-    return Math.floor(Date.now() / 1000) < endTime;
+    if (!endTime) return false;
+    const target = typeof endTime === 'number' ? endTime : Math.floor(new Date(endTime).getTime() / 1000);
+    if (isNaN(target)) return false;
+    return Math.floor(Date.now() / 1000) < target;
   };
 
   const generateMockSummary = (description) => {

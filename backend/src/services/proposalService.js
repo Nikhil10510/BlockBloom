@@ -38,6 +38,14 @@ class ProposalService {
     const skip = (page - 1) * limit;
     const sort = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
 
+    // Lazy-close any expired proposals before returning results.
+    // This ensures correct status even if the cron job missed a cycle
+    // (e.g., Render free tier went to sleep).
+    await Proposal.updateMany(
+      { status: 'active', endTime: { $lte: new Date() } },
+      { $set: { status: 'closed' } }
+    );
+
     const [proposals, total] = await Promise.all([
       Proposal.find(filter).sort(sort).skip(skip).limit(limit).lean(),
       Proposal.countDocuments(filter),
@@ -54,6 +62,7 @@ class ProposalService {
         hasPrevPage: page > 1,
       },
     };
+
   }
 
   /**
