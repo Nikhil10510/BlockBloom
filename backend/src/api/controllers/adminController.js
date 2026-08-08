@@ -90,3 +90,27 @@ exports.getElectionAnalytics = asyncHandler(async (req, res) => {
     },
   });
 });
+
+/**
+ * Reset/Clear all DAOs, Elections, Proposals, Votes, Whitelists, Organizations, and Departments
+ * POST /api/admin/reset-daos
+ */
+exports.resetDAOs = asyncHandler(async (req, res) => {
+  const { DAO, StudentVerification, DraftProposal, Organization, Department } = require('../../models');
+
+  await Promise.all([
+    DAO.deleteMany({}),
+    Election.deleteMany({}),
+    Proposal.deleteMany({}),
+    Vote.deleteMany({}),
+    StudentVerification.deleteMany({}),
+    DraftProposal.deleteMany({}),
+    Organization.deleteMany({}),
+    Department.deleteMany({})
+  ]);
+
+  res.json({
+    success: true,
+    message: 'All DAOs, Elections, Proposals, Organizations, and Whitelists have been cleared successfully. You can now create fresh DAOs!'
+  });
+});

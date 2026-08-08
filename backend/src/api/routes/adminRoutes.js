@@ -11,5 +11,6 @@ router.use(requireRole('superadmin'));
 router.get('/audit-logs', adminController.getAuditLogs);
 router.get('/analytics/voters', adminController.getVoterAnalytics);
 router.get('/analytics/elections', adminController.getElectionAnalytics);
+router.post('/reset-daos', adminController.resetDAOs);
 
 module.exports = router;
