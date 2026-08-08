@@ -127,6 +127,52 @@ export default function Organizations() {
     }
   };
 
+  const syncOnChainElectionsForOrg = async (orgId) => {
+    try {
+      const factoryAddress = contracts.ElectionFactory?.address;
+      const factoryABI = contracts.ElectionFactory?.abi;
+      if (!factoryAddress || !factoryABI) return;
+
+      const provider = getEthersProvider();
+      if (!provider) return;
+
+      const factory = new ethers.Contract(factoryAddress, factoryABI, provider);
+      const onChainAddrs = await factory.getElectionsByOrg(orgId);
+
+      if (onChainAddrs && onChainAddrs.length > 0) {
+        for (const addr of onChainAddrs) {
+          let name = 'Governance Election';
+          try {
+            const electionContract = new ethers.Contract(addr, contracts.Election?.abi || [], provider);
+            name = await electionContract.name();
+          } catch (e) {}
+
+          await fetch(`${API_BASE}/elections/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              orgId,
+              contractAddress: addr,
+              name,
+              timelockDelay: 60,
+              quorumVotes: 3,
+              creator: user?.address || '',
+            }),
+          });
+        }
+
+        // Re-fetch elections from backend API after registering on-chain elections
+        const res = await fetch(`${API_BASE}/elections?orgId=${orgId}`);
+        const data = await res.json();
+        if (data.success && data.elections) {
+          setElections(prev => ({ ...prev, [orgId]: data.elections }));
+        }
+      }
+    } catch (err) {
+      console.warn('Auto-sync from on-chain failed:', err);
+    }
+  };
+
   const fetchElectionsForOrg = async (orgId) => {
     setLoadingElections(prev => ({ ...prev, [orgId]: true }));
     try {
@@ -134,6 +180,11 @@ export default function Organizations() {
       const data = await res.json();
       if (data.success) {
         setElections(prev => ({ ...prev, [orgId]: data.elections }));
+
+        // If backend returned 0 elections, attempt on-chain auto-sync
+        if (!data.elections || data.elections.length === 0) {
+          syncOnChainElectionsForOrg(orgId);
+        }
       }
     } catch (e) {
       console.error('Failed to load elections for org', orgId);
@@ -230,9 +281,19 @@ export default function Organizations() {
       showToast('Transaction submitted, waiting for confirmation...', 'info');
       const receipt = await tx.wait();
 
-      // Extract newly deployed election address from event logs
+      // Query smart contract directly for the newly deployed election address
       let deployedAddress = null;
-      if (receipt && receipt.logs) {
+      try {
+        const onChainAddrs = await factory.getElectionsByOrg(targetOrgId);
+        if (onChainAddrs && onChainAddrs.length > 0) {
+          deployedAddress = onChainAddrs[onChainAddrs.length - 1];
+        }
+      } catch (e) {
+        console.warn('Could not query getElectionsByOrg:', e);
+      }
+
+      // Backup log parsing if contract query didn't return
+      if (!deployedAddress && receipt && receipt.logs) {
         for (const log of receipt.logs) {
           try {
             const parsed = factory.interface.parseLog(log);
@@ -240,13 +301,11 @@ export default function Organizations() {
               deployedAddress = parsed.args.electionAddress || parsed.args[1];
               break;
             }
-          } catch (e) {
-            // Ignore non-matching logs
-          }
+          } catch (e) {}
         }
       }
 
-      // Immediately register with backend so it displays in UI instantly
+      // Register with backend so it displays in UI instantly
       if (deployedAddress) {
         try {
           await fetch(`${API_BASE}/elections/register`, {
@@ -272,9 +331,8 @@ export default function Organizations() {
       setShowCreateElection(false);
       setElectionName(''); setTimelockDelay('60'); setQuorumVotes('3');
 
-      // Fetch immediately
-      fetchElectionsForOrg(targetOrgId);
-      setTimeout(() => fetchElectionsForOrg(targetOrgId), 3000);
+      // Fetch immediately and trigger auto-sync if needed
+      await fetchElectionsForOrg(targetOrgId);
     } catch (err) {
       console.error(err);
       showToast(err.message || 'Failed to deploy election', 'error');
