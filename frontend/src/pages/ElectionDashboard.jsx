@@ -5,7 +5,7 @@ import { ethers } from 'ethers';
 import { getEthersSigner } from '../utils/adapters';
 import ElectionABI from '../abis/Election.json';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000/api';
+import { API_BASE } from '../utils/apiConfig';
 
 // ─── Proposal Status Tag ──────────────────────────────────────────────────────
 function ProposalStatus({ endTime, executed }) {

@@ -7,7 +7,7 @@ import { getEthersSigner, getEthersProvider } from '../utils/adapters';
 import contracts from '../contracts.json';
 import { useToast } from '../context/ToastContext';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000/api';
+import { API_BASE } from '../utils/apiConfig';
 
 // ─── Reusable Modal ───────────────────────────────────────────────────────────
 function Modal({ open, onClose, title, children }) {

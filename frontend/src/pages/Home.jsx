@@ -9,7 +9,7 @@ import { useConnectModal } from "@rainbow-me/rainbowkit";
 
 import { useToast } from "../context/ToastContext";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+import { API_BASE } from '../utils/apiConfig';
 const EXPECTED_CHAIN_ID = import.meta.env.VITE_REQUIRED_CHAIN_ID || "31337";
 
 function Home() {

@@ -4,7 +4,7 @@ import { SiweMessage } from 'siwe';
 
 const AuthContext = createContext();
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+import { API_BASE } from '../utils/apiConfig';
 
 export function AuthProvider({ children }) {
   const { address, isConnected } = useAccount();

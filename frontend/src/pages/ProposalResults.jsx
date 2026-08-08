@@ -8,7 +8,7 @@ import ElectionABI from '../abis/Election.json';
 import { useToast } from '../context/ToastContext';
 import { io } from 'socket.io-client';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000/api';
+import { API_BASE } from '../utils/apiConfig';
 
 // ─── Progress Bar ─────────────────────────────────────────────────────────────
 function VoteBar({ label, votes, totalVotes, index }) {

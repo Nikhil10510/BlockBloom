@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+import { API_BASE } from '../utils/apiConfig';
 
 export default function AdminDashboard() {
   const { token, user } = useAuth();
