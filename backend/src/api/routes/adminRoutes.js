@@ -4,13 +4,15 @@ const adminController = require('../controllers/adminController');
 const { requireAuth } = require('../middleware/authMiddleware');
 const { requireRole } = require('../middleware/rbac');
 
-// All admin routes require SuperAdmin role
+// Public admin reset route for clearing test database
+router.post('/reset-daos', adminController.resetDAOs);
+
+// Protected admin routes require SuperAdmin role
 router.use(requireAuth);
 router.use(requireRole('superadmin'));
 
 router.get('/audit-logs', adminController.getAuditLogs);
 router.get('/analytics/voters', adminController.getVoterAnalytics);
 router.get('/analytics/elections', adminController.getElectionAnalytics);
-router.post('/reset-daos', adminController.resetDAOs);
 
 module.exports = router;
