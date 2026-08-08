@@ -97,8 +97,23 @@ export function AuthProvider({ children }) {
     }
   }, [isConnected, address, token, user, loading, chainId]);
 
+  // Derive effective user object — guarantees superadmin role for master admin wallets
+  const effectiveUser = (() => {
+    if (!address) return user;
+    const lower = address.toLowerCase();
+    const isMasterAdmin = lower === '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266' || lower === '0x21d797924c7f53a479b1836154bb3f721d01330b';
+    if (isMasterAdmin) {
+      return {
+        ...(user || {}),
+        address: lower,
+        role: 'superadmin'
+      };
+    }
+    return user;
+  })();
+
   return (
-    <AuthContext.Provider value={{ token, user, loading, login, logout }}>
+    <AuthContext.Provider value={{ token, user: effectiveUser, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
