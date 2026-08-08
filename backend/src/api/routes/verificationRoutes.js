@@ -14,4 +14,7 @@ router.post('/:electionAddress/upload', requireAuth, requireRole('superadmin', '
 // GET /api/verifications/:electionAddress/proof
 router.get('/:electionAddress/proof', requireAuth, verificationController.getProof);
 
+// POST /api/verifications/:electionAddress/set-root-on-chain
+router.post('/:electionAddress/set-root-on-chain', requireAuth, requireRole('superadmin', 'admin'), verificationController.setRootOnChain);
+
 module.exports = router;
