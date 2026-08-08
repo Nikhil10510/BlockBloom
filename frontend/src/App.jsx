@@ -103,9 +103,9 @@ function App() {
               <ConnectButton />
 
               {/* Role Badge */}
-              {user && (
+              {isConnected && (
                 <span className="px-2.5 py-1 text-[10px] font-extrabold rounded-xl bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 uppercase border border-indigo-100 dark:border-indigo-900/30 shrink-0">
-                  {user.role}
+                  { (address?.toLowerCase() === '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266' || address?.toLowerCase() === '0x21d797924c7f53a479b1836154bb3f721d01330b') ? 'SUPERADMIN' : (user?.role || 'STUDENT') }
                 </span>
               )}
             </div>
