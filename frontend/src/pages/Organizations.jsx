@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAccount } from 'wagmi';
 import { ethers } from 'ethers';
-import { getEthersSigner } from '../utils/adapters';
+import { getEthersSigner, getEthersProvider } from '../utils/adapters';
 import contracts from '../contracts.json';
 import { useToast } from '../context/ToastContext';
 
