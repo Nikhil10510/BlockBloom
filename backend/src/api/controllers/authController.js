@@ -64,9 +64,9 @@ class AuthController {
       let user = await User.findOne({ walletAddress: fields.address.toLowerCase() });
       const addrLower = fields.address.toLowerCase();
       let defaultRole = 'student';
-      if (addrLower === '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266') {
+      if (addrLower === '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266' || addrLower === '0x21d797924c7f53a479b1836154bb3f721d01330b') {
         defaultRole = 'superadmin';
-      } else if (addrLower === '0x70997970c51812dc3a010c7d01b50e0d17dc79c8' || addrLower === '0x21d797924c7f53a479b1836154bb3f721d01330b') {
+      } else if (addrLower === '0x70997970c51812dc3a010c7d01b50e0d17dc79c8') {
         defaultRole = 'admin';
       }
 
@@ -114,10 +114,19 @@ class AuthController {
    */
   async getMe(req, res, next) {
     try {
-      const user = await User.findOne({ walletAddress: req.user.address.toLowerCase() }).populate('organization department');
+      let user = await User.findOne({ walletAddress: req.user.address.toLowerCase() }).populate('organization department');
       if (!user) {
         throw ApiError.notFound('User not found');
       }
+
+      const addrLower = user.walletAddress.toLowerCase();
+      if (addrLower === '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266' || addrLower === '0x21d797924c7f53a479b1836154bb3f721d01330b') {
+        if (user.role !== 'superadmin') {
+          user.role = 'superadmin';
+          await user.save();
+        }
+      }
+
       res.json({ success: true, user });
     } catch (error) {
       next(error);
