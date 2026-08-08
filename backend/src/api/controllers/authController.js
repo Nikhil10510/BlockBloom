@@ -1,4 +1,5 @@
 const { SiweMessage, generateNonce } = require('siwe');
+const { ethers } = require('ethers');
 const jwt = require('jsonwebtoken');
 const config = require('../../config');
 const { ApiError } = require('../../utils');
@@ -65,7 +66,7 @@ class AuthController {
       let defaultRole = 'student';
       if (addrLower === '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266') {
         defaultRole = 'superadmin';
-      } else if (addrLower === '0x70997970c51812dc3a010c7d01b50e0d17dc79c8') {
+      } else if (addrLower === '0x70997970c51812dc3a010c7d01b50e0d17dc79c8' || addrLower === '0x21d797924c7f53a479b1836154bb3f721d01330b') {
         defaultRole = 'admin';
       }
 
