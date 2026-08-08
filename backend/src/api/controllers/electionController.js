@@ -58,6 +58,39 @@ class ElectionController {
     }
   }
 
+  // POST /api/elections/register (Immediate registration from frontend)
+  async registerElection(req, res, next) {
+    try {
+      const { orgId, contractAddress, treasuryAddress, name, timelockDelay, quorumVotes, creator, blockNumber, transactionHash } = req.body;
+      if (!contractAddress || !name || !orgId) {
+        throw ApiError.badRequest('Missing required fields (contractAddress, name, orgId)');
+      }
+
+      const lowerAddress = contractAddress.toLowerCase();
+      let election = await Election.findOne({ contractAddress: lowerAddress });
+      if (!election) {
+        election = await Election.create({
+          orgId,
+          contractAddress: lowerAddress,
+          treasuryAddress: (treasuryAddress || '').toLowerCase(),
+          name,
+          timelockDelay: Number(timelockDelay) || 60,
+          quorumVotes: Number(quorumVotes) || 3,
+          creator: (creator || req.user?.address || '').toLowerCase(),
+          blockNumber: Number(blockNumber) || 0,
+          transactionHash: transactionHash || '',
+        });
+      } else if (election.orgId !== orgId) {
+        election.orgId = orgId;
+        await election.save();
+      }
+
+      res.json({ success: true, election });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   // POST /api/elections/fix-orphaned  (admin utility)
   async fixOrphanedElections(req, res, next) {
     try {

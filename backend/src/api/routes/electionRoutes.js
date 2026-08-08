@@ -5,6 +5,9 @@ const electionController = require('../controllers/electionController');
 // GET /api/elections - Get all elections (optionally filter by orgId)
 router.get('/', electionController.getElections);
 
+// POST /api/elections/register - Register newly created election immediately
+router.post('/register', electionController.registerElection);
+
 // POST /api/elections/fix-orphaned - Fix elections with stale orgIds (admin utility)
 router.post('/fix-orphaned', electionController.fixOrphanedElections);
 

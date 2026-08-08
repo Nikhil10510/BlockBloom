@@ -228,18 +228,53 @@ export default function Organizations() {
         adminAddress
       );
       showToast('Transaction submitted, waiting for confirmation...', 'info');
-      await tx.wait();
+      const receipt = await tx.wait();
 
-      showToast(`Election "${electionName}" deployed on-chain! The indexer will sync it shortly.`, 'success');
+      // Extract newly deployed election address from event logs
+      let deployedAddress = null;
+      if (receipt && receipt.logs) {
+        for (const log of receipt.logs) {
+          try {
+            const parsed = factory.interface.parseLog(log);
+            if (parsed && parsed.name === 'ElectionCreated') {
+              deployedAddress = parsed.args.electionAddress || parsed.args[1];
+              break;
+            }
+          } catch (e) {
+            // Ignore non-matching logs
+          }
+        }
+      }
+
+      // Immediately register with backend so it displays in UI instantly
+      if (deployedAddress) {
+        try {
+          await fetch(`${API_BASE}/elections/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              orgId: targetOrgId,
+              contractAddress: deployedAddress,
+              name: electionName.trim(),
+              timelockDelay: Number(timelockDelay),
+              quorumVotes: Number(quorumVotes),
+              creator: user?.address || adminAddress,
+              transactionHash: receipt.hash || tx.hash,
+              blockNumber: receipt.blockNumber
+            }),
+          });
+        } catch (regErr) {
+          console.warn('Failed to register election directly with backend', regErr);
+        }
+      }
+
+      showToast(`Election "${electionName}" deployed on-chain & synced! 🎉`, 'success');
       setShowCreateElection(false);
       setElectionName(''); setTimelockDelay('60'); setQuorumVotes('3');
 
-      // Refresh elections for this org after delay to allow indexer to process
-      // Clear old cache first so we always show fresh data
-      setElections(prev => ({ ...prev, [targetOrgId]: undefined }));
-      setTimeout(() => fetchElectionsForOrg(targetOrgId), 5000);
-      // Also do a second refresh in case indexer was slow
-      setTimeout(() => fetchElectionsForOrg(targetOrgId), 10000);
+      // Fetch immediately
+      fetchElectionsForOrg(targetOrgId);
+      setTimeout(() => fetchElectionsForOrg(targetOrgId), 3000);
     } catch (err) {
       console.error(err);
       showToast(err.message || 'Failed to deploy election', 'error');
