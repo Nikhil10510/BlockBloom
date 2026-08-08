@@ -18,8 +18,19 @@ import { useAccount, useChainId } from "wagmi";
 function App() {
   const { isDark, toggleTheme } = useTheme();
   const { user, token, login } = useAuth();
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
   const chainId = useChainId();
+
+  const isSuperAdminAddr = address && [
+    '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266',
+    '0x21d797924c7f53a479b1836154bb3f721d01330b',
+    '0xb588d99161cae188d279dcedc94c934e2b2a3f4d'
+  ].includes(address.toLowerCase());
+
+  const isAdminAddr = address && [
+    '0x70997970c51812dc3a010c7d01b50e0d17dc79c8',
+    '0xdf6e18a4e9b33fd762fb4d7f69a40528198cd381'
+  ].includes(address.toLowerCase());
 
   return (
     <BrowserRouter>
@@ -105,7 +116,7 @@ function App() {
               {/* Role Badge */}
               {isConnected && (
                 <span className="px-2.5 py-1 text-[10px] font-extrabold rounded-xl bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 uppercase border border-indigo-100 dark:border-indigo-900/30 shrink-0">
-                  { (address?.toLowerCase() === '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266' || address?.toLowerCase() === '0x21d797924c7f53a479b1836154bb3f721d01330b') ? 'SUPERADMIN' : (user?.role || 'STUDENT') }
+                  { isSuperAdminAddr ? 'SUPERADMIN' : isAdminAddr ? 'ADMIN' : (user?.role || 'STUDENT') }
                 </span>
               )}
             </div>
