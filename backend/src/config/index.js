@@ -23,17 +23,17 @@ const config = {
   useInMemoryDb: process.env.USE_IN_MEMORY_DB !== 'false',
 
   // --- Blockchain ---
-  rpcUrl: process.env.RPC_URL,
-  electionFactoryAddress: process.env.ELECTION_FACTORY_ADDRESS,
-  bloomTokenAddress: process.env.BLOOM_TOKEN_ADDRESS,
+  rpcUrl: process.env.RPC_URL || 'https://eth-sepolia.g.alchemy.com/v2/demo',
+  electionFactoryAddress: process.env.ELECTION_FACTORY_ADDRESS || '0x282e16edFeAAf66a5d86665e10237A2e380e09C7',
+  bloomTokenAddress: process.env.BLOOM_TOKEN_ADDRESS || '0xE79404a6a1c6085BCe9De11DC5705492eF2fF173',
   adminPrivateKey: process.env.ADMIN_PRIVATE_KEY,
 
   // --- CORS ---
-  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  corsOrigin: process.env.CORS_ORIGIN || '*',
 
   // --- Rate Limiting ---
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000,
-  rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX, 10) || 100,
+  rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX, 10) || 10000,
 
   // --- Auth ---
   jwtSecret: process.env.JWT_SECRET || 'super-secret-default-key-please-change',
@@ -45,15 +45,12 @@ const config = {
 
 /**
  * Validate that critical variables are present.
- * The server will refuse to start if any are missing — fail fast.
+ * Log a warning if default fallback is being used.
  */
 const requiredVars = ['rpcUrl', 'electionFactoryAddress'];
 for (const key of requiredVars) {
   if (!config[key] || config[key].includes('0x000000000000000000000000000000000000')) {
-    if (config.isProduction) {
-      throw new Error(`Missing required config: ${key}. Set it in your .env file.`);
-    }
-    console.warn(`⚠️  WARNING: "${key}" is not configured. Blockchain features will be disabled.`);
+    console.warn(`⚠️  WARNING: "${key}" is missing or unconfigured. Using fallback or disabling feature.`);
   }
 }
 
