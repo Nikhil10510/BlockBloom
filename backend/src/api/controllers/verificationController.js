@@ -28,12 +28,13 @@ class VerificationController {
       }
 
       // Check organization scope:
-      // Allow if: superadmin, OR user's org matches election's org, OR user is the election creator
+      // Allow if: superadmin/admin, OR user's org matches election's org, OR user is the election creator
       const userAddress = (dbUser.walletAddress || req.user.address || '').toLowerCase();
       const isCreator = election.creator && election.creator.toLowerCase() === userAddress;
       const hasOrgAccess = String(election.orgId) === String(dbUser.organization);
+      const isSuperAdminOrAdmin = req.user.role === 'superadmin' || dbUser.role === 'superadmin' || req.user.role === 'admin' || dbUser.role === 'admin';
 
-      if (dbUser.role !== 'superadmin' && !hasOrgAccess && !isCreator) {
+      if (!isSuperAdminOrAdmin && !hasOrgAccess && !isCreator) {
         throw ApiError.forbidden('You do not have permission to manage this election.');
       }
 

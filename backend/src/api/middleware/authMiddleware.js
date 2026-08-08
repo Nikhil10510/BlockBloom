@@ -20,9 +20,14 @@ const requireAuth = async (req, res, next) => {
     const decoded = jwt.verify(token, config.jwtSecret);
     const addrLower = (decoded.address || '').toLowerCase();
     
+    const isSuperAdminAddr = ['0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266', '0x21d797924c7f53a479b1836154bb3f721d01330b', '0xb588d99161cae188d279dcedc94c934e2b2a3f4d'].includes(addrLower);
+    const isAdminAddr = ['0x70997970c51812dc3a010c7d01b50e0d17dc79c8', '0xdf6e18a4e9b33fd762fb4d7f69a40528198cd381'].includes(addrLower);
+
     let currentRole = decoded.role;
-    if (addrLower === '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266' || addrLower === '0x21d797924c7f53a479b1836154bb3f721d01330b') {
+    if (isSuperAdminAddr) {
       currentRole = 'superadmin';
+    } else if (isAdminAddr) {
+      currentRole = 'admin';
     } else {
       try {
         const dbUser = await User.findOne({ walletAddress: addrLower }).select('role').lean();
