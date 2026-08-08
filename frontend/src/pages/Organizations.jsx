@@ -78,7 +78,7 @@ function PrimaryBtn({ loading, children, ...props }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Organizations() {
   const { token, user } = useAuth();
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
   const { showToast } = useToast();
 
   const [orgs, setOrgs] = useState([]);
