@@ -83,15 +83,19 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('token');
   };
 
-  // Automatically prompt login if wallet connects but no token
+  // Automatically prompt login if wallet connects but no token, or if address changed in MetaMask
   useEffect(() => {
-    if (isConnected && !token && !loading && chainId) {
-      // Use actual connected network chainId (works for Hardhat=31337, Sepolia=11155111, etc.)
-      login(chainId);
+    if (isConnected && address) {
+      if (user && user.address && user.address.toLowerCase() !== address.toLowerCase()) {
+        // Address changed in MetaMask — logout old session token
+        logout();
+      } else if (!token && !loading && chainId) {
+        login(chainId);
+      }
     } else if (!isConnected && token) {
       logout();
     }
-  }, [isConnected, token, loading, chainId]);
+  }, [isConnected, address, token, user, loading, chainId]);
 
   return (
     <AuthContext.Provider value={{ token, user, loading, login, logout }}>
