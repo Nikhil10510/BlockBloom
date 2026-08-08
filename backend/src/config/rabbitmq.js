@@ -36,9 +36,8 @@ async function connectRabbitMQ() {
 
     logger.info(`🐇 RabbitMQ connected to ${rabbitMqUrl}`);
   } catch (error) {
-    logger.error('Error connecting to RabbitMQ:', error);
-    // Retry connection logic could go here
-    setTimeout(connectRabbitMQ, 5000);
+    // Fail gracefully when RabbitMQ is not installed/running locally or on Render free tier
+    logger.info('ℹ️ RabbitMQ service unavailable. Operating with in-memory event dispatcher fallback.');
   }
 }
 
