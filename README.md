@@ -1,173 +1,51 @@
-# 🌱 BlockBloom DAO — Local Development Setup
+# 🌱 BlockBloom DAO
 
-> **For all team members (Chinmay, Kushagra, Nikhil)**
-> Follow these steps exactly after pulling from `main`. No manual address editing needed.
+Welcome to **BlockBloom DAO**, a comprehensive, full-stack Decentralized Autonomous Organization (DAO) platform designed to empower communities with transparent, on-chain governance. This project demonstrates proficiency in Web3 integration, full-stack development, and scalable system architecture.
 
----
+## 🚀 Project Overview
 
-## ✅ Prerequisites (install once)
+BlockBloom is a platform that allows users to seamlessly deploy their own DAOs, create decentralized proposals, and participate in on-chain voting. It bridges the gap between complex blockchain interactions and intuitive user experiences, making decentralized governance accessible to everyone. 
 
-- [Node.js v18+](https://nodejs.org/)
-- [MetaMask browser extension](https://metamask.io/)
-- Git
+This project was built to showcase a complete Web3 ecosystem, starting from smart contract deployment all the way to backend indexing and a responsive frontend interface.
 
----
+## ✨ Key Features
 
-## 🚀 First-Time Setup (after cloning / pulling)
+- **DAO Factory & Deployment**: Users can deploy custom DAOs instantly, provisioning their own `Governance`, `Treasury`, and `BloomToken` contracts directly from the UI.
+- **On-Chain Governance & Voting**: Secure, immutable proposal creation and voting mechanisms backed by Solidity smart contracts.
+- **Off-Chain Drafts & SIWE**: "Sign-In With Ethereum" (SIWE) authentication allows users to save draft proposals securely in a centralized backend before paying gas fees to publish them on-chain.
+- **Real-Time Data Indexing**: A dedicated backend indexer listens to blockchain events and syncs them with a MongoDB database, enabling lightning-fast frontend queries without overloading RPC nodes.
+- **AI-Powered Summaries**: Integrates Gemini AI to generate concise, readable summaries of complex proposals.
+- **Leaderboards & Analytics**: Comprehensive tracking of voter history, DAO statistics, and platform-wide engagement metrics.
 
-### Step 0 — Install all dependencies
-Open a terminal in the `FinalTask` folder:
+## 🛠️ Technology Stack
 
-```bash
-cd hardhat   && npm install && cd ..
-cd backend   && npm install && cd ..
-cd frontend  && npm install && cd ..
-```
+BlockBloom utilizes a modern, robust tech stack:
 
----
+### Frontend
+- **React.js & Vite**: For a fast, responsive, and dynamic user interface.
+- **Ethers.js / Web3.js**: To interact with the Ethereum blockchain and user wallets (MetaMask).
+- **CSS / Styling**: Custom responsive designs optimized for a premium user experience.
 
-### Step 1 — Start the local blockchain
-Open **Terminal 1** and keep it running:
+### Backend
+- **Node.js & Express**: RESTful APIs for off-chain data (drafts, stats, leaderboards).
+- **MongoDB**: NoSQL database for caching indexed on-chain data and storing off-chain drafts.
+- **Socket.IO**: Real-time updates for voting and proposal statuses.
 
-```bash
-cd e:\Blockboom\BlockBloom_GDG_Project-main\BlockBloom_GDG_Project-main\FinalTask\hardhat
-npx hardhat node
-```
+### Smart Contracts (Solidity)
+- **Hardhat**: Development environment for compiling, testing, and deploying contracts.
+- **Contracts**: `BloomToken.sol` (ERC20), `Governance.sol`, `DAOFactory.sol`, `Treasury.sol`.
 
-⏳ Wait until you see:
-```
-Started HTTP and WebSocket JSON-RPC server at http://127.0.0.1:8545/
-```
+## 🏗️ System Architecture
 
----
+1. **User Interaction**: Users connect their MetaMask wallets to the React frontend.
+2. **Blockchain Layer**: Smart contracts handle the core logic (token balances, proposal states, vote counting) on the Ethereum network (or local Hardhat node).
+3. **Indexer & Backend**: The Node.js backend listens for events emitted by the smart contracts, processes them, and stores the structured data in MongoDB.
+4. **Data Delivery**: The frontend fetches aggregated data (like leaderboards and stats) from the Express APIs, ensuring a snappy user experience.
 
-### Step 2 — Deploy contracts + auto-configure everything
-Open **Terminal 2** (after Terminal 1 is ready):
+## 👨‍💻 Developer Setup
 
-```bash
-cd e:\Blockboom\BlockBloom_GDG_Project-main\BlockBloom_GDG_Project-main\FinalTask\hardhat
-npm run setup
-```
-
-⏳ Wait until you see:
-```
-✅ LOCAL DEPLOYMENT COMPLETE
-📝 Updated frontend/src/contracts.json with new addresses
-📝 Created backend/.env from .env.example with new addresses
-```
-
-> ⚡ This single command:
-> - Deploys `BloomToken` and `DAOFactory` to your local node
-> - Automatically updates `frontend/src/contracts.json` with your addresses
-> - Automatically creates/updates `backend/.env` with your addresses
-> - **You never need to manually copy-paste any address**
+If you are a developer or teammate looking to run this project locally, please refer to our detailed setup guide:
+👉 [Local Development Setup](TEAMMATE_SETUP.md)
 
 ---
-
-### Step 3 — Start the backend
-Open **Terminal 3**:
-
-```bash
-cd e:\Blockboom\BlockBloom_GDG_Project-main\BlockBloom_GDG_Project-main\FinalTask\backend
-npm run dev
-```
-
-⏳ Wait until you see:
-```
-MongoDB     : Connected ✅
-Socket.IO   : Ready ✅
-Indexer     : Running ✅
-```
-
----
-
-### Step 4 — Start the frontend
-Open **Terminal 4**:
-
-```bash
-cd e:\Blockboom\BlockBloom_GDG_Project-main\BlockBloom_GDG_Project-main\FinalTask\frontend
-npm run dev
-```
-
-⏳ Wait until you see:
-```
-Local: http://localhost:5173/
-```
-
----
-
-### Step 5 — Configure MetaMask
-
-1. Open MetaMask → click the network dropdown
-2. Add a new network manually:
-
-| Field | Value |
-|---|---|
-| Network Name | Hardhat Localhost |
-| RPC URL | `http://127.0.0.1:8545` |
-| Chain ID | `31337` |
-| Currency Symbol | `ETH` |
-
-3. Import a test account using one of Hardhat's private keys (shown in Terminal 1 output):
-   ```
-   Account #0 private key: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-   ```
-
----
-
-### Step 6 — Open the app
-
-Go to: **http://localhost:5173**
-
-- Click **"+ Deploy New DAO"** to create your first DAO
-- Start creating proposals and voting!
-
----
-
-## 🔄 Every Day Workflow (after first setup)
-
-When you come back the next day or restart your PC:
-
-```
-Terminal 1:  cd hardhat   → npx hardhat node     (start blockchain)
-Terminal 2:  cd hardhat   → npm run setup         (redeploy + update configs)
-Terminal 3:  cd backend   → npm run dev            (start backend)
-Terminal 4:  cd frontend  → npm run dev            (start frontend)
-```
-
-> ⚠️ Always run `npm run setup` AFTER starting the hardhat node, and BEFORE starting the backend.
-> The setup script rewrites addresses — start backend after it completes.
-
----
-
-## ❓ Common Errors & Fixes
-
-| Error | Fix |
-|---|---|
-| `EADDRINUSE: port 5000` | Old backend still running. Run: `Get-Process node \| Stop-Process -Force` then restart backend |
-| `This DAO was created with a stale BloomToken` | You ran setup without restarting the node. Restart node → run setup → create new DAOs |
-| `ECONNREFUSED 127.0.0.1:8545` | Hardhat node isn't running. Start Terminal 1 first |
-| `429 Too Many Requests` | Backend rate limit hit. Already fixed in `.env.example` (10000 limit) |
-| MetaMask wrong network | Switch MetaMask to `Hardhat Localhost` (chainId 31337) |
-
----
-
-## 📁 Project Structure
-
-```
-FinalTask/
-├── hardhat/          ← Smart contracts (Solidity) + deploy scripts
-│   ├── contracts/    ← BloomToken.sol, Governance.sol, DAOFactory.sol, Treasury.sol
-│   └── deploy-local.js  ← The magic setup script
-├── backend/          ← Express API + MongoDB + Socket.IO
-│   ├── src/
-│   └── .env.example  ← Copy of env template (auto-used by setup script)
-└── frontend/         ← React + Vite UI
-    └── src/
-        ├── contracts.json  ← ABI + addresses (auto-updated by setup script)
-        └── pages/
-```
-
----
-
-*BlockBloom DAO Team · Phase 3 · May 2026*
+*Developed by the BlockBloom Team (Chinmay, Kushagra, Nikhil) - 2026*
